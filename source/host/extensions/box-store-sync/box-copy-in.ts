@@ -422,7 +422,7 @@ export async function runBoxCopyIn(deps: {
         new Map([...manifest].filter(([relPath]) => existsSync(join(deps.targetDir, relPath)))),
       )
     : [...authoritativeStoreDbAgentIds].filter(agentId =>
-        existsSync(join(deps.targetDir, "home/box/sand-data/agents", agentId, "store.db")),
+        existsSync(join(deps.targetDir, "home/box/openbot-data/agents", agentId, "store.db")),
       ).length;
   const legacyStoreDbsComplete = restoredStoreDbEntries >= advertisedStoreDbEntries;
   const fullyHydrated =

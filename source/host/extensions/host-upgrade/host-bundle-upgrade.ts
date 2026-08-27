@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { HostBundleSource } from "./host-bundle-source.js";
 import type { HostUpgradeMarker } from "./host-upgrade-marker.js";
 
-export const SAND_SUPERVISOR_DIR = "/tmp/sand-supervisor";
+export const SAND_SUPERVISOR_DIR = "/tmp/openbot-supervisor";
 export const SAND_SUPERVISOR_COMMAND_PATH = `${SAND_SUPERVISOR_DIR}/command.json`;
 export const SAND_SUPERVISOR_COMMAND_PART_PATH = `${SAND_SUPERVISOR_COMMAND_PATH}.part`;
 export const SAND_SUPERVISOR_ACKS_DIR = `${SAND_SUPERVISOR_DIR}/acks`;

@@ -17,7 +17,7 @@ function isEnoent(error: unknown): boolean {
 }
 
 export async function hasExistingDevBoxDurableData(devBoxRoot: string): Promise<boolean> {
-  for (const directory of ["sand-data", "box-store"]) {
+  for (const directory of ["openbot-data", "sand-data", "box-store"]) {
     try { if ((await fs.readdir(join(devBoxRoot, directory))).length > 0) return true; }
     catch (error) { if (!isEnoent(error)) throw error; }
   }

@@ -1,6 +1,6 @@
 {
-  "name": "sand",
-  "productName": "Grok Bot",
+  "name": "openbot",
+  "productName": "OpenBot",
   "version": "0.18.0",
   "description": "Grok Bot desktop agent",
   "author": "SpaceXAI",

@@ -606,7 +606,7 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
         },
       };
       secretsStores = createSecretsStores(
-        join(bindings.native.app.getPath("userData"), "sand-client-persistence"),
+        join(bindings.native.app.getPath("userData"), "openbot-client-persistence"),
         accountLifecycle.getAccountScope,
         {
           reportTelemetry: (level, metadata) => {

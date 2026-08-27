@@ -18,7 +18,7 @@ import {
 import { isSandHostProcess } from "../../host/host-lock.js";
 import { findSystemErrno } from "../../shared/system-errno.js";
 
-export const DATA_ROOT_MARKER_FILENAME = ".grokbot-data-root-v1";
+export const DATA_ROOT_MARKER_FILENAME = ".openbot-data-root-v1";
 export const LOCAL_EXEC_DAEMON_DISCOVERY_FILENAME = "local-exec-daemon.json";
 export const HOST_LOCK_FILENAME = "host.lock";
 export const SAND_ROOT_SIGNATURE_ENTRIES = new Set([

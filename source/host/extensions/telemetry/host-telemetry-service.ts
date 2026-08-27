@@ -37,9 +37,9 @@ import {
   type LogLevel,
   type Metadata,
 } from "./structured-log-telemetry.js";
-export const SUPERVISOR_LOG_PATH = "/tmp/sand-supervisor.log",
+export const SUPERVISOR_LOG_PATH = "/tmp/openbot-supervisor.log",
   SAND_SUPERVISOR_DESKTOP_HEALTH_PATH =
-    "/tmp/sand-supervisor/desktop-health.json",
+    "/tmp/openbot-supervisor/desktop-health.json",
   DESKTOP_HEALTH_FORWARD_INTERVAL_MS = 30_000,
   DESKTOP_HEALTH_HEARTBEAT_MS = 5 * 60_000;
 type Renewal = {

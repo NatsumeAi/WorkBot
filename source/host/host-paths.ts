@@ -7,9 +7,11 @@ import { isPathWithin } from "../shared/node/paths.js";
 import { findSystemErrno } from "../shared/system-errno.js";
 
 export const SAND_DATA_ROOT_ENV = "SAND_DATA_ROOT";
-export const SAND_PRODUCTION_DATA_DIRNAME = ".grokbot";
+export const OPENBOT_DATA_ROOT_ENV = "OPENBOT_DATA_ROOT";
+export const SAND_PRODUCTION_DATA_DIRNAME = ".openbot";
 export const SAND_USER_DATA_DIR_ENV = "SAND_USER_DATA_DIR";
-export const SAND_DATA_DIRNAME = "sand-data";
+export const OPENBOT_USER_DATA_DIR_ENV = "OPENBOT_USER_DATA_DIR";
+export const SAND_DATA_DIRNAME = "openbot-data";
 export const USER_DATA_DIR_FLAG = "--user-data-dir";
 export const SAND_BOX_HOME_DIR = "/home/box";
 export const SAND_BOX_DATA_ROOT = `${SAND_BOX_HOME_DIR}/${SAND_DATA_DIRNAME}`;
@@ -50,7 +52,7 @@ export function readUserDataDirArg(argv: readonly string[]): string | null {
 }
 
 export function resolveSandUserDataDir(argv: readonly string[] = [], env: NodeJS.ProcessEnv = process.env, cwd = process.cwd()): string | null {
-  const raw = readUserDataDirArg(argv) ?? env[SAND_USER_DATA_DIR_ENV];
+  const raw = readUserDataDirArg(argv) ?? env[OPENBOT_USER_DATA_DIR_ENV] ?? env[SAND_USER_DATA_DIR_ENV];
   const trimmed = raw?.trim();
   if (trimmed == null || trimmed.length === 0) return null;
   return isAbsolute(trimmed) ? trimmed : resolve(cwd, trimmed);
@@ -59,7 +61,7 @@ export function resolveSandUserDataDir(argv: readonly string[] = [], env: NodeJS
 export function getSandProductionRootDir(homeDir = homedir()): string { return join(homeDir, SAND_PRODUCTION_DATA_DIRNAME); }
 
 export function resolveSandDataRootOverride(env: NodeJS.ProcessEnv = process.env): string | null {
-  const override = env[SAND_DATA_ROOT_ENV]?.trim();
+  const override = env[OPENBOT_DATA_ROOT_ENV]?.trim() || env[SAND_DATA_ROOT_ENV]?.trim();
   return override != null && override.length > 0 && isAbsolute(override) ? override : null;
 }
 
@@ -75,7 +77,7 @@ export function getSandRootDir(homeDir = homedir()): string {
 export function reanchorSandPath(storedPath: string): string {
   const root = getSandRootDir();
   if (isPathWithin(root, storedPath, { isInclusive: true })) return storedPath;
-  const match = /(?:[/\\]\.cursor[/\\]sand(?:-[^/\\]+)?|[/\\]\.grokbot)[/\\](.+)$/.exec(storedPath);
+  const match = /(?:[/\\]\.cursor[/\\]sand(?:-[^/\\]+)?|[/\\]\.grokbot|[/\\]\.openbot)[/\\](.+)$/.exec(storedPath);
   if (match?.[1] == null) return storedPath;
   const segments = match[1].split(/[/\\]+/);
   if (segments.some((segment) => segment === "." || segment === "..")) return storedPath;

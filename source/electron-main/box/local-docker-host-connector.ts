@@ -11,9 +11,9 @@ import type { SandRemoteHostConnector } from "./box-host-connector.js";
 import type { GatewayConnection } from "./gateway-descriptor-cache.js";
 
 export const LOCAL_DOCKER_BOX_IMAGE = "public.ecr.aws/k0i0n2g5/cursorenvironments/universal:sand-box-latest";
-export const LOCAL_DOCKER_BOX_CONTAINER = "grok-bot-local-vm";
+export const LOCAL_DOCKER_BOX_CONTAINER = "openbot-local-vm";
 export const LOCAL_DOCKER_GATEWAY_URL = "http://127.0.0.1:1340";
-export const LOCAL_DOCKER_OWNER_LABEL = "com.grok-bot.local-vm=1";
+export const LOCAL_DOCKER_OWNER_LABEL = "com.openbot.local-vm=1";
 export const LOCAL_DOCKER_SCHEMA_VERSION = "6";
 const READY_TIMEOUT_MS = 180_000;
 const OPTIONAL_CREDENTIAL_TIMEOUT_MS = 3_000;
@@ -92,11 +92,11 @@ async function inspectContainer(): Promise<{ exists: boolean; running: boolean; 
     return {
       exists: true,
       running: value.State?.Running === true,
-      owned: value.Config?.Labels?.["com.grok-bot.local-vm"] === "1",
+      owned: value.Config?.Labels?.["com.openbot.local-vm"] === "1",
       image: typeof value.Config?.Image === "string" ? value.Config.Image : "",
-      hostSha256: typeof value.Config?.Labels?.["com.grok-bot.local-vm.host-sha256"] === "string" ? value.Config.Labels["com.grok-bot.local-vm.host-sha256"] as string : "",
-      hasInferenceCredential: value.Config?.Labels?.["com.grok-bot.local-vm.inference-credential"] === "1",
-      schemaVersion: typeof value.Config?.Labels?.["com.grok-bot.local-vm.schema-version"] === "string" ? value.Config.Labels["com.grok-bot.local-vm.schema-version"] as string : "",
+      hostSha256: typeof value.Config?.Labels?.["com.openbot.local-vm.host-sha256"] === "string" ? value.Config.Labels["com.openbot.local-vm.host-sha256"] as string : "",
+      hasInferenceCredential: value.Config?.Labels?.["com.openbot.local-vm.inference-credential"] === "1",
+      schemaVersion: typeof value.Config?.Labels?.["com.openbot.local-vm.schema-version"] === "string" ? value.Config.Labels["com.openbot.local-vm.schema-version"] as string : "",
     };
   } catch { throw new Error("Docker returned malformed container inspection data."); }
 }
@@ -184,19 +184,19 @@ async function ensureLocalDockerBox(settingsPath: string, inferenceCredential?: 
     const authMounts = await localAuthMountArguments();
     const created = await runDocker([
       "run", "--detach", "--name", LOCAL_DOCKER_BOX_CONTAINER,
-      "--label", LOCAL_DOCKER_OWNER_LABEL, "--label", `com.grok-bot.local-vm.host-sha256=${hostBundle.sha256}`,
-      "--label", `com.grok-bot.local-vm.box-exec-daemon-sha256=${hostBundle.boxExecDaemonSha256}`,
-      "--label", `com.grok-bot.local-vm.inference-credential=${inferenceCredential == null ? "0" : "1"}`,
-      "--label", `com.grok-bot.local-vm.schema-version=${LOCAL_DOCKER_SCHEMA_VERSION}`,
+      "--label", LOCAL_DOCKER_OWNER_LABEL, "--label", `com.openbot.local-vm.host-sha256=${hostBundle.sha256}`,
+      "--label", `com.openbot.local-vm.box-exec-daemon-sha256=${hostBundle.boxExecDaemonSha256}`,
+      "--label", `com.openbot.local-vm.inference-credential=${inferenceCredential == null ? "0" : "1"}`,
+      "--label", `com.openbot.local-vm.schema-version=${LOCAL_DOCKER_SCHEMA_VERSION}`,
       "--platform", "linux/amd64", "--restart", "unless-stopped",
-      "--env", "SAND_SUPERVISOR_ENABLED=1", "--env", "SAND_BOX_AUTO_UPDATE=0", "--env", "SAND_USE_EXISTING_BOX_EXEC_DAEMON=1", "--env", "SAND_TREE_SITTER_NODE_DEPS=/home/box/deps", "--env", "NODE_PATH=/home/box/deps", "--env", "SAND_GATEWAY_BIND_HOST=0.0.0.0", "--env", "SAND_HOST_PORT=1340", "--env", `SAND_GATEWAY_TOKEN=${token}`,
-      ...(inferenceCredential == null ? [] : ["--env", "SAND_DEV_INFERENCE_TOKEN_FILE=/run/grok-bot/inference.json", "--env", `SAND_BACKEND_URL=${inferenceCredential.backendUrl}`]),
+      "--env", "SAND_SUPERVISOR_ENABLED=1", "--env", "SAND_BOX_AUTO_UPDATE=0", "--env", "SAND_USE_EXISTING_BOX_EXEC_DAEMON=1", "--env", "SAND_TREE_SITTER_NODE_DEPS=/home/box/deps", "--env", "NODE_PATH=/home/box/deps", "--env", "SAND_GATEWAY_BIND_HOST=0.0.0.0", "--env", "SAND_HOST_PORT=1340", "--env", "SAND_DATA_ROOT=/home/box/openbot-data", "--env", `SAND_GATEWAY_TOKEN=${token}`,
+      ...(inferenceCredential == null ? [] : ["--env", "SAND_DEV_INFERENCE_TOKEN_FILE=/run/openbot/inference.json", "--env", `SAND_BACKEND_URL=${inferenceCredential.backendUrl}`]),
       "--publish", "127.0.0.1:1337:1337", "--publish", "127.0.0.1:1339:1339", "--publish", "127.0.0.1:1340:1340",
       "--publish", "127.0.0.1:6080:6080", "--publish", "127.0.0.1:6081:6081", "--publish", "127.0.0.1:8790:8790",
-      "--volume", "grok-bot-local-vm-workspace:/workspace", "--volume", "grok-bot-local-vm-data:/home/box/sand-data",
+      "--volume", "openbot-local-vm-workspace:/workspace", "--volume", "openbot-local-vm-data:/home/box/openbot-data",
       "--mount", `type=bind,src=${hostBundle.path},dst=/home/box/sand-host/host-main.cjs,readonly`,
       "--mount", `type=bind,src=${dirname(hostBundle.boxExecDaemonPath)},dst=/home/box/box-exec-daemon,readonly`,
-      ...(inferenceFile == null ? [] : ["--mount", `type=bind,src=${dirname(inferenceFile)},dst=/run/grok-bot,readonly`]),
+      ...(inferenceFile == null ? [] : ["--mount", `type=bind,src=${dirname(inferenceFile)},dst=/run/openbot,readonly`]),
       ...authMounts,
       LOCAL_DOCKER_BOX_IMAGE,
     ]);

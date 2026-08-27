@@ -1,4 +1,4 @@
-export const SAND_SUPERVISOR_DIR = "/tmp/sand-supervisor";
+export const SAND_SUPERVISOR_DIR = "/tmp/openbot-supervisor";
 export const SAND_SUPERVISOR_COMMAND_PATH = `${SAND_SUPERVISOR_DIR}/command.json`;
 export const SAND_SUPERVISOR_COMMAND_PART_PATH = `${SAND_SUPERVISOR_COMMAND_PATH}.part`;
 export const SAND_SUPERVISOR_STATUS_PATH = `${SAND_SUPERVISOR_DIR}/status.json`;
@@ -6,7 +6,7 @@ export const SAND_SUPERVISOR_ACKS_DIR = `${SAND_SUPERVISOR_DIR}/acks`;
 export const SAND_SUPERVISOR_STAGED_BUNDLE_PATH = `${SAND_SUPERVISOR_DIR}/incoming-host-bundle.tgz`;
 export const SAND_SUPERVISOR_STAGED_BUNDLE_PART_PATH = `${SAND_SUPERVISOR_STAGED_BUNDLE_PATH}.part`;
 export const SAND_SUPERVISOR_DESKTOP_HEALTH_PATH = `${SAND_SUPERVISOR_DIR}/desktop-health.json`;
-export const SAND_BOX_AGENT_DATA_ROOT = "/home/box/sand-data";
+export const SAND_BOX_AGENT_DATA_ROOT = "/home/box/openbot-data";
 export const SAND_BOX_HOST_UPGRADE_MARKER_PATH = `${SAND_BOX_AGENT_DATA_ROOT}/.sand-host-upgrade.json`;
 export const SAND_BOX_HOST_DIR = "/home/box/sand-host";
 export const SAND_BOX_HOST_ENTRY = `${SAND_BOX_HOST_DIR}/host-main.cjs`;
