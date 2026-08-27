@@ -29,6 +29,7 @@ import {
   type SettingsDesktopSnapshot
 } from "./desktop";
 import { GeneralSettingsPanel, RouterSettingsPanel, UpdatesSettingsPanel, UsageSettingsPanel } from "./panels";
+import { ServerSettingsPanel } from "./server";
 import { SettingsModalShell, type SettingsSectionId } from "./view";
 import { DEFAULT_ROUTER_PROVIDER, loadRouterProvider, saveRouterProvider, type RouterProviderId } from "./router";
 import type { AutoReviewSettings } from "./auto-review";
@@ -270,6 +271,7 @@ export function SettingsDesktopSurface({ bridge, coordinatorClient = null, initi
             provider={routerProvider}
           />
         );
+        if (section === "server") return <ServerSettingsPanel agent={bridge.agent} />;
         return (
           <UpdatesSettingsPanel
             autoUpdateWhenIdle={snapshot.update?.autoUpdateWhenIdleOptIn ?? false}

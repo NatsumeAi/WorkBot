@@ -5,6 +5,7 @@ import { createRealExpiryPolicy, createRealPollingPolicy, createRealRetryPolicy,
 import { COORDINATOR_TRANSPORT_STATE_FAMILY } from "../shared/rpc/coordinator-port.js";
 import { isCoordinatorMainMethod } from "../shared/rpc/coordinator-main.js";
 import { SAND_WEBAUTHN_HEARTBEAT_INTERVAL_MS, type WebAuthnCeremony } from "../shared/webauthn-gateway.js";
+import { isNoServerConfiguredError } from "../shared/gateway-reachability.js";
 import { adoptCarrier, type CarrierIntake } from "./carrier.js";
 import { createControlPortClient } from "./control-port-client.js";
 import { CoordinatorGatewayClient, HOST_ACCOUNT_SLOT, createCoordinatorGatewayClientTiming, type GatewayConnection } from "./gateway/gateway-client.js";
@@ -47,7 +48,18 @@ export function recordEchoIfUserEcho(payload: unknown, recorder: { recordSendEch
 }
 
 export function createWebAuthnReconnectPolicy() {
-  return createRealRetryPolicy({ name: "sand-webauthn-reconnect", maxAttempts: Number.MAX_SAFE_INTEGER, initialDelayMs: 1_000, maxDelayMs: 30_000 });
+  return createRealRetryPolicy({
+    name: "sand-webauthn-reconnect",
+    maxAttempts: Number.MAX_SAFE_INTEGER,
+    initialDelayMs: 1_000,
+    maxDelayMs: 30_000,
+    shouldRetry: (error) => {
+      if (isNoServerConfiguredError(error)) return false;
+      const message = error instanceof Error ? error.message : String(error);
+      if (/HTTP 401|HTTP 403|HTTP 404/.test(message)) return false;
+      return true;
+    },
+  });
 }
 
 type Commands = Record<string, (args: unknown) => Promise<unknown>>;
@@ -131,12 +143,14 @@ export async function composeCoordinator(dependencies: ComposeCoordinatorDepende
     controlClient.postEvent(event.family, event.payload);
     if (event.family === "transport-down") {
       isGatewayStreamLive = false;
+      localExecSupervisor.setStreamLive(false);
       hostSupervisor.invalidateHealthCache();
       server.postEvent(COORDINATOR_TRANSPORT_STATE_FAMILY, { state: "down" });
       return;
     }
     isGatewayStreamLive = true;
-    void localExecSupervisor.refreshConnection();
+    localExecSupervisor.setStreamLive(true);
+    webauthnProvider?.start();
     void seedAgentsRosterToMain();
     server.postEvent(COORDINATOR_TRANSPORT_STATE_FAMILY, { state: "connected" });
   }
@@ -207,7 +221,6 @@ export async function composeCoordinator(dependencies: ComposeCoordinatorDepende
       deliveryPolicy: createRealRetryPolicy({ name: "sand-webauthn-delivery", maxAttempts: 5, initialDelayMs: 250, maxDelayMs: 4_000 }),
       label: hostname()
     });
-    webauthnProvider.start();
   }
 
   const gatewayDispatch = createGatewayRequestDispatch(gatewayClient);

@@ -1,11 +1,6 @@
 import { SseBlockDecoder } from "../gateway/sse-block-decoder.js";
-import {
-  GATEWAY_WEBAUTHN_REQUESTS_PATH,
-  GATEWAY_WEBAUTHN_RESPONSES_PATH,
-  type WebAuthnCeremony,
-  type WebAuthnRequestFrame,
-  type WebAuthnResponseFrame
-} from "../../shared/webauthn-gateway.js";
+import { GATEWAY_WEBAUTHN_REQUESTS_PATH, GATEWAY_WEBAUTHN_RESPONSES_PATH, type WebAuthnCeremony, type WebAuthnRequestFrame, type WebAuthnResponseFrame } from "../../shared/webauthn-gateway.js";
+import { GATEWAY_SSE_ACCEPT_HEADERS } from "../../shared/gateway-wire.js";
 import type { ApprovedWebAuthnConsent, WebAuthnSigner } from "./signer.js";
 
 export class WebAuthnChannelError extends Error {
@@ -134,7 +129,7 @@ export function createWebAuthnProvider(options: WebAuthnProviderOptions): { star
 
   async function connectOnce(signal: AbortSignal): Promise<never> {
     const connection = await options.resolveConnection();
-    const response = await fetch(`${connection.baseUrl}${GATEWAY_WEBAUTHN_REQUESTS_PATH}`, { headers: headersFor(connection), signal });
+    const response = await fetch(`${connection.baseUrl}${GATEWAY_WEBAUTHN_REQUESTS_PATH}`, { headers: { ...GATEWAY_SSE_ACCEPT_HEADERS, ...headersFor(connection) }, signal });
     if (!response.ok || response.body == null) throw new WebAuthnChannelError(`webauthn request stream refused: HTTP ${response.status}`);
     log("webauthn request stream open");
     providerId = undefined;

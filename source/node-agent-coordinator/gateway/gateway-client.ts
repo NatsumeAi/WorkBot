@@ -18,6 +18,7 @@ import {
   GATEWAY_EVENTS_PATH,
   GATEWAY_MINT_DEDUPE_HEADER,
   GATEWAY_SLIM_AVATARS_HEADER,
+  GATEWAY_SSE_ACCEPT_HEADERS,
   GATEWAY_TRACEPARENT_HEADER
 } from "../../shared/gateway-wire.js";
 import { deriveChildTraceparent } from "../../shared/observability/send-trace.js";
@@ -32,7 +33,7 @@ import {
 } from "./gateway-reachability.js";
 import { SseBlockDecoder } from "./sse-block-decoder.js";
 
-export const PERMANENT_REFUSAL_KINDS = new Set(["no_storage", "box_blocked", "access_denied"]);
+export const PERMANENT_REFUSAL_KINDS = new Set(["no_storage", "box_blocked", "access_denied", "no_server"]);
 export const PRE_DISPATCH_KINDS = new Set(["refused", "dns"]);
 export const CREATE_AGENT_RETRY_POLICY = { name: "gateway-create-agent-retry", maxAttempts: 3, initialDelayMs: 1_000, maxDelayMs: 4_000, backoffFactor: 2 } as const;
 export const SSE_RECONNECT_MIN_MS = 1_000;
@@ -398,15 +399,27 @@ export class CoordinatorGatewayClient {
     let failedAttempts = 0;
     while (!this.isClosed) {
       const generation = this.reconnectGeneration;
-      try { await this.streamEvents(() => { failedAttempts = 0; }, generation); } catch {}
+      let parkedNoServer = false;
+      try { await this.streamEvents(() => { failedAttempts = 0; }, generation); }
+      catch (error) {
+        const outcome = classifyGatewayError(error).outcome;
+        parkedNoServer = outcome === "no_server" || outcome === "access_denied";
+      }
       if (this.isClosed) break;
       if (generation !== this.reconnectGeneration) { failedAttempts = 0; continue; }
       const backoffController = new AbortController();
       this.activeEventLoopController = backoffController;
       if (generation !== this.reconnectGeneration) { this.activeEventLoopController = undefined; failedAttempts = 0; continue; }
-      failedAttempts += 1;
-      const wait = this.options.timing.reconnectBackoff.schedule(failedAttempts, backoffController.signal);
-      try { await wait.elapsed; } catch {} finally { wait.dispose(); }
+      if (parkedNoServer) {
+        await new Promise<void>((resolve) => {
+          if (backoffController.signal.aborted) { resolve(); return; }
+          backoffController.signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+      } else {
+        failedAttempts += 1;
+        const wait = this.options.timing.reconnectBackoff.schedule(failedAttempts, backoffController.signal);
+        try { await wait.elapsed; } catch {} finally { wait.dispose(); }
+      }
       if (this.activeEventLoopController === backoffController) this.activeEventLoopController = undefined;
       if (generation !== this.reconnectGeneration) failedAttempts = 0;
     }
@@ -424,7 +437,7 @@ export class CoordinatorGatewayClient {
         handshake = await this.options.timing.connectDeadline.run(async (deadlineSignal) => {
           const resolved = await this.resolveConnection(deadlineSignal);
           connection = resolved;
-          const response = await fetch(`${resolved.baseUrl}${GATEWAY_EVENTS_PATH}`, { headers: this.requestHeaders({ accept: "text/event-stream" }, resolved), signal: controller.signal });
+          const response = await fetch(`${resolved.baseUrl}${GATEWAY_EVENTS_PATH}`, { headers: this.requestHeaders({ ...GATEWAY_SSE_ACCEPT_HEADERS }, resolved), signal: controller.signal });
           if (controller.signal.aborted || attemptGeneration !== this.reconnectGeneration) {
             void response.body?.cancel().catch(() => {});
             throw new Error("gateway connect superseded");
@@ -434,24 +447,32 @@ export class CoordinatorGatewayClient {
         }, controller.signal);
       } catch (error) { if (error instanceof DeadlineExceededError) controller.abort(); throw error; }
       const { reader } = handshake;
-      resetBackoff();
-      this.connectionCount += 1;
       didConnect = true;
-      this.transportState = "connected";
       const blocks = new SseBlockDecoder((block) => this.dispatchEventBlock(block, handshake.connection.vncProxy ?? null));
       let stalled = false;
       const watchdog = this.options.timing.stallWatchdog.arm(() => { stalled = true; controller.abort(); });
       let down = { reason: "stream-ended", cause: null as string | null };
-      try {
+      let announced = false;
+      const announceLive = (): void => {
+        if (announced) return;
+        announced = true;
+        resetBackoff();
+        this.connectionCount += 1;
+        this.transportState = "connected";
         this.reportReachability({ outcome: "ok", method: "events", latencyMs: this.options.timing.clock.monotonicNow() - connectStartMonotonicMs, baseUrlKind: classifyBaseUrlKind(handshake.connection.baseUrl) }, handshake.connection.baseUrl);
-        const forced = this.pendingForcedReconnect != null && this.pendingForcedReconnect.generation <= attemptGeneration;
         this.emitTransportEvent({ family: "transport-connected", payload: { generation: this.connectionCount } });
-        if (forced) { this.pendingForcedReconnect?.resolve(); this.pendingForcedReconnect = undefined; }
+        if (this.pendingForcedReconnect != null && this.pendingForcedReconnect.generation <= attemptGeneration) {
+          this.pendingForcedReconnect.resolve();
+          this.pendingForcedReconnect = undefined;
+        }
+      };
+      try {
         for (;;) {
           const result = await reader.read();
           if (result.done) break;
           watchdog.kick();
           blocks.push(result.value);
+          announceLive();
         }
       } catch (error) {
         down = classifyStreamDown({ stalled, forced: attemptGeneration !== this.reconnectGeneration, devInducedOffline: this.devInducedOffline, clientPaused: this.clientPaused, error });

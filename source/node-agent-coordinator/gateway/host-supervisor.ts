@@ -138,7 +138,11 @@ export class SandHostSupervisor {
       if (!this.streamLivenessDisabled && this.options.isTransportLive?.() === true) return cached;
       if (!this.healthTtlDisabled && this.options.timing.clock.monotonicNow() - this.lastHealthyAtMs < HEALTH_PROBE_TTL_MS) return cached;
       const epochAtProbe = this.healthEpoch;
-      if (await fetchHealth(this.options.timing, cached.baseUrl, cached.headers, this.options.onReachability) != null) {
+      const probeHeaders = {
+        ...(cached.headers ?? {}),
+        ...(typeof cached.token === "string" && cached.token.length > 0 ? { authorization: `Bearer ${cached.token}` } : {}),
+      };
+      if (await fetchHealth(this.options.timing, cached.baseUrl, Object.keys(probeHeaders).length > 0 ? probeHeaders : undefined, this.options.onReachability) != null) {
         if (epochAtProbe === this.healthEpoch) this.lastHealthyAtMs = this.options.timing.clock.monotonicNow();
         return cached;
       }

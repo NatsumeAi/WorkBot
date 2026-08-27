@@ -185,7 +185,7 @@ export async function createTurnAgentRunContext<ContextValue>(
   const inferenceProvider = new SandSettingsStore(join(getSandRootDir(), "settings.json")).getInferenceProvider();
   const agent = inferenceProvider === "cursor"
     ? input.inference.createSession(input.onRequestId, sessionOptions)
-    : createProviderPromptSession(inferenceProvider) as unknown as TurnAgentPromptSession;
+    : createProviderPromptSession(inferenceProvider, "chat") as unknown as TurnAgentPromptSession;
   const summarizationSession = inferenceProvider === "cursor" ? input.inference.createSummarizationSession?.(
     input.onRequestId,
     {
@@ -193,7 +193,7 @@ export async function createTurnAgentRunContext<ContextValue>(
       isSummarizationSession: true,
       ...(input.lineage === undefined ? {} : { lineage: input.lineage }),
     },
-  ) : createProviderPromptSession(inferenceProvider) as unknown as SummarizationPromptSession;
+  ) : createProviderPromptSession(inferenceProvider, "compact") as unknown as SummarizationPromptSession;
   const summarization = summarizationSession ?? input.inference.createSession(
     input.onRequestId,
     {

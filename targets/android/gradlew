@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+root="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+wrapper_jar="$root/gradle/wrapper/gradle-wrapper.jar"
+if [ -f "$wrapper_jar" ]; then
+  exec java -jar "$wrapper_jar" "$@"
+fi
+if command -v gradle >/dev/null 2>&1; then
+  exec gradle "$@"
+fi
+echo "Android Gradle wrapper jar is missing and no system gradle is on PATH." >&2
+echo "Install the Android SDK / Gradle, or drop gradle-wrapper.jar into gradle/wrapper/." >&2
+exit 1

@@ -1,4 +1,5 @@
 import type { HostInferenceOptions } from "./inference-service.js";
+import { hostInferenceCanRunWithoutCursor } from "./provider-session.js";
 import type { SummarizationPromptSession } from "../../../packages/agent-summarization/summarization-handler.js";
 
 export interface InferenceExtensionContext {
@@ -49,4 +50,4 @@ export function createAgentPromptSession(
   return owner.createSession(onRequestId, options);
 }
 
-export const inferenceExtension = { id: "inference", dependencies: ["auth", "experiments", "settings"] as const, start(context: InferenceExtensionContext) { const listeners = new Set<() => void>(); const notify = () => { for (const listener of [...listeners]) listener(); }; return { isReady: async () => process.env.SAND_AGENT_MOCK_RESPONSE != null || context.deps.auth.peekAccessToken() !== null, port: context.createPort(notify), onModelExperimentApplied(listener: () => void) { listeners.add(listener); return () => listeners.delete(listener); }, createWebSearch: (args: unknown) => context.createWebSearch(args), createWebFetch: (args: unknown) => context.createWebFetch(args) }; } };
+export const inferenceExtension = { id: "inference", dependencies: ["auth", "experiments", "settings"] as const, start(context: InferenceExtensionContext) { const listeners = new Set<() => void>(); const notify = () => { for (const listener of [...listeners]) listener(); }; return { isReady: async () => context.deps.auth.peekAccessToken() !== null || hostInferenceCanRunWithoutCursor(), port: context.createPort(notify), onModelExperimentApplied(listener: () => void) { listeners.add(listener); return () => listeners.delete(listener); }, createWebSearch: (args: unknown) => context.createWebSearch(args), createWebFetch: (args: unknown) => context.createWebFetch(args) }; } };

@@ -6,7 +6,7 @@ import type { JsonValue } from "@bufbuild/protobuf";
 
 import { createDeadlinePolicy, createIdleWatchdogPolicy, createPollingPolicy, createRetryPolicy, realClock } from "../../internal/scheduling.js";
 import { errorLogTag, errorMessage } from "../../shared/errors.js";
-import { GATEWAY_AUTH_SCHEME } from "../../shared/gateway-wire.js";
+import { GATEWAY_AUTH_SCHEME, GATEWAY_SSE_ACCEPT_HEADERS } from "../../shared/gateway-wire.js";
 import {
   DEFAULT_MAX_LOCAL_EXEC_FILE_BYTES, GATEWAY_LOCAL_EXEC_REQUESTS_PATH, GATEWAY_LOCAL_EXEC_RESPONSES_PATH,
   SAND_LOCAL_EXEC_CONTROL_POST_TIMEOUT_MS, SAND_LOCAL_EXEC_DATA_POST_TIMEOUT_MS, SAND_LOCAL_EXEC_HEARTBEAT_INTERVAL_MS,
@@ -111,7 +111,7 @@ export class SandLocalExecProvider {
   private async currentSupervised(): Promise<boolean | undefined> { return await this.options.isSupervised?.(); }
   async streamRequests(resetBackoff: () => void = () => {}): Promise<void> {
     const connection = await this.options.resolveConnection(); const controller = new AbortController(); this.abortController = controller;
-    const response = await this.fetcher(`${connection.baseUrl}${GATEWAY_LOCAL_EXEC_REQUESTS_PATH}`, { headers: withLocalExecAuth({ accept: "text/event-stream" }, connection), signal: controller.signal });
+    const response = await this.fetcher(`${connection.baseUrl}${GATEWAY_LOCAL_EXEC_REQUESTS_PATH}`, { headers: withLocalExecAuth({ ...GATEWAY_SSE_ACCEPT_HEADERS }, connection), signal: controller.signal });
     if (!response.ok || response.body == null) throw new SandLocalExecStreamError(`local-exec requests stream failed: ${response.status}`);
     resetBackoff(); void this.currentSupervised().then((supervised) => this.postBatch([{ kind: "hello", localRoot: this.root, terminalsFolder: this.terminalsFolder, computerId: this.computerId, label: this.computerLabel, ...(supervised === undefined ? {} : { supervised }), ...(this.options.variant === undefined ? {} : { variant: this.options.variant }) }], this.controlPostDeadline));
     const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; const stall = this.stallWatchdog.arm(() => controller.abort());

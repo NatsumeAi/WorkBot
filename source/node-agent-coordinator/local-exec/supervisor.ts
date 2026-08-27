@@ -1,5 +1,5 @@
 import { createRealPollingPolicy, type PollingPolicy } from "../../internal/scheduling.js";
-import { SAND_CLIENT_PAUSE_REASON } from "../../shared/gateway-reachability.js";
+import { SAND_CLIENT_PAUSE_REASON, isNoServerConfiguredError } from "../../shared/gateway-reachability.js";
 import {
   commandCarriesLocalExecGeneration,
   localExecDiscoveryTimeMatchesProcess,
@@ -98,6 +98,9 @@ export function createLocalExecDaemonSupervisor(options: LocalExecDaemonSupervis
   let descriptorWrite = Promise.resolve();
   let paused = false;
   let refusedForClientPause = false;
+  let idleForMissingServer = false;
+  let idleUntilStreamLive = true;
+  let skipDaemonWithoutCredential = false;
   let reconciliation = Promise.resolve();
   let missingDiscoveryTicks = 0;
   let consecutiveRespawns = 0;
@@ -135,7 +138,12 @@ export function createLocalExecDaemonSupervisor(options: LocalExecDaemonSupervis
       await write;
       await writeLocalExecSupervisorHeartbeat(paths.supervisorHeartbeatPath);
       refusedForClientPause = false;
+      idleForMissingServer = false;
     } catch (error) {
+      if (isNoServerConfiguredError(error)) {
+        idleForMissingServer = true;
+        return;
+      }
       if (!isClientPauseRefusal(error)) return;
       refusedForClientPause = true;
       await retireDaemonForPause();
@@ -146,14 +154,20 @@ export function createLocalExecDaemonSupervisor(options: LocalExecDaemonSupervis
     if (credentialHandedOff || disposed || paused) return;
     try {
       const credential = await options.control.mintLocalExecDaemonCredential({});
-      if (credential == null || disposed) return;
+      if (credential == null || disposed) {
+        skipDaemonWithoutCredential = true;
+        return;
+      }
       await writeLocalExecDaemonCredential(credential, paths.credentialPath);
       credentialHandedOff = true;
-    } catch {}
+      skipDaemonWithoutCredential = false;
+    } catch {
+      skipDaemonWithoutCredential = true;
+    }
   };
 
   const spawnDaemon = async () => {
-    if (paused || refusedForClientPause) return;
+    if (paused || refusedForClientPause || idleForMissingServer || idleUntilStreamLive || skipDaemonWithoutCredential) return;
     const spawned = await options.control.spawnLocalExecDaemon({
       env: { ELECTRON_RUN_AS_NODE: "1", SAND_PACKAGED: options.isPackaged ? "1" : "0" },
       logPath: paths.logPath
@@ -217,7 +231,7 @@ export function createLocalExecDaemonSupervisor(options: LocalExecDaemonSupervis
   };
 
   const establishDaemon = async () => {
-    if (paused || refusedForClientPause) return;
+    if (paused || refusedForClientPause || idleForMissingServer || idleUntilStreamLive || skipDaemonWithoutCredential) return;
     try {
       const existing = await readLocalExecDaemonDiscovery(paths.discoveryPath);
       if (disposed) return;
@@ -249,6 +263,7 @@ export function createLocalExecDaemonSupervisor(options: LocalExecDaemonSupervis
   };
 
   const healDaemonInternal = async () => {
+    if (idleForMissingServer || idleUntilStreamLive || skipDaemonWithoutCredential) return;
     if (paused || refusedForClientPause) { await retireDaemonForPause(); return; }
     if (state.phase === "absent") { consecutiveRespawns = 0; await establishDaemon(); return; }
     if (state.phase === "failed") {
@@ -321,7 +336,7 @@ export function createLocalExecDaemonSupervisor(options: LocalExecDaemonSupervis
       if (disposed) return;
       started = true;
       startPromise = (async () => {
-        await enqueue(async () => { await refreshConnectionInternal(); await refreshCredential(); if (!disposed) await establishDaemon(); });
+        await enqueue(async () => { await refreshConnectionInternal(); await refreshCredential(); if (!disposed && !idleUntilStreamLive && !skipDaemonWithoutCredential) await establishDaemon(); });
         if (disposed) return;
         let absorbedImmediateTick = false;
         polling = options.refreshPolicy.start(async () => {
@@ -337,6 +352,15 @@ export function createLocalExecDaemonSupervisor(options: LocalExecDaemonSupervis
       return startPromise;
     },
     refreshConnection: () => enqueue(refreshConnectionInternal),
+    setStreamLive(live: boolean): void {
+      idleUntilStreamLive = !live;
+      if (!live || disposed || !started) return;
+      void enqueue(async () => {
+        await refreshConnectionInternal();
+        await refreshCredential();
+        if (!skipDaemonWithoutCredential) await establishDaemon();
+      });
+    },
     async setPaused(next: boolean): Promise<void> {
       await enqueue(async () => {
         if (disposed || paused === next) return;

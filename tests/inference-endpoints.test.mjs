@@ -1,0 +1,147 @@
+import assert from "node:assert/strict";
+import path from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+async function load() {
+  const result = await build({
+    absWorkingDir: repoRoot,
+    bundle: true,
+    entryPoints: ["source/shared/inference-endpoints.ts"],
+    format: "esm",
+    platform: "node",
+    write: false,
+    packages: "external",
+  });
+  const file = result.outputFiles[0];
+  if (file == null) throw new Error("esbuild produced no output");
+  return import(`data:text/javascript;base64,${Buffer.from(file.text).toString("base64")}`);
+}
+
+test("endpoints JSON keeps secret names and rejects inline keys", async () => {
+  const {
+    documentFromPreset,
+    emptyInferenceEndpointsDocument,
+    parseInferenceEndpointsDocument,
+    publicInferenceEndpointsDocument,
+  } = await load();
+  const openrouter = emptyInferenceEndpointsDocument();
+  assert.equal(openrouter.active, "openrouter");
+  assert.equal(openrouter.endpoints[0]?.apiKeySecret, "OPENROUTER_API_KEY");
+  assert.equal(parseInferenceEndpointsDocument({ schemaVersion: 1, active: "openai", endpoints: [{ id: "openai", kind: "openai-compatible", baseURL: "https://api.openai.com/v1", apiKeySecret: "sk-live-not-a-name", model: "gpt-4o" }] }), undefined);
+  assert.equal(parseInferenceEndpointsDocument({ schemaVersion: 1, active: "openai", apiKey: "sk-secret", endpoints: [{ id: "openai", kind: "openai-compatible", baseURL: "https://api.openai.com/v1", apiKeySecret: "OPENAI_API_KEY", model: "gpt-4o" }] }), undefined);
+  assert.equal(parseInferenceEndpointsDocument({ schemaVersion: 1, active: "openai", endpoints: [{ id: "openai", kind: "openai-compatible", baseURL: "https://api.openai.com/v1", apiKey: "sk-secret", apiKeySecret: "OPENAI_API_KEY", model: "gpt-4o" }] }), undefined);
+  const openai = documentFromPreset("openai");
+  assert.deepEqual(publicInferenceEndpointsDocument(openai), openai);
+  assert.equal(JSON.stringify(openai).includes("sk-"), false);
+  assert.equal(openai.endpoints[0]?.model, "gpt-5.6-sol");
+  assert.equal(openai.endpoints[0]?.contextWindow, 1_050_000);
+  assert.equal(openai.endpoints[0]?.reasoningEffort, "medium");
+});
+
+test("catalog uses current 2026 model IDs", async () => {
+  const { INFERENCE_PROVIDER_CATALOG, emptyInferenceEndpointsDocument, compactUnusedFraction, effectiveContextWindow, parseInferenceEndpointsDocument } = await load();
+  const ids = INFERENCE_PROVIDER_CATALOG.flatMap((provider) => provider.models.map((model) => model.id)).join("\n");
+  assert.match(ids, /gpt-5\.6-sol/);
+  assert.match(ids, /claude-opus-5/);
+  assert.match(ids, /deepseek-v4-pro/);
+  assert.match(ids, /grok-4\.6/);
+  assert.equal(ids.includes("gpt-4o"), false);
+  assert.equal(ids.includes("deepseek-chat"), false);
+  assert.equal(ids.includes("llama-3.3"), false);
+  const empty = emptyInferenceEndpointsDocument();
+  assert.equal(empty.endpoints[0]?.model, "openai/gpt-5.6-sol");
+  assert.equal(effectiveContextWindow(empty.endpoints[0]), 1_050_000);
+  assert.equal(compactUnusedFraction(empty.endpoints[0]), 0.25);
+  const tight = parseInferenceEndpointsDocument({
+    schemaVersion: 1,
+    active: "openai",
+    endpoints: [{
+      id: "openai",
+      kind: "openai-compatible",
+      baseURL: "https://api.openai.com/v1",
+      apiKeySecret: "OPENAI_API_KEY",
+      model: "gpt-5.6-sol",
+      reasoningEffort: "high",
+      contextWindow: 1_050_000,
+      maxInputTokens: 700_000,
+      maxOutputTokens: 128_000,
+      compactAt: 0.9,
+    }],
+  });
+  assert.equal(tight?.endpoints[0]?.reasoningEffort, "high");
+  assert.equal(tight?.endpoints[0]?.contextWindow, 1_050_000);
+  assert.ok(tight?.endpoints[0]);
+  assert.equal(compactUnusedFraction(tight.endpoints[0]), 0.1);
+});
+
+test("preset documents round-trip", async () => {
+  const { documentFromPreset, parseInferenceEndpointsDocument } = await load();
+  const parsed = parseInferenceEndpointsDocument(JSON.stringify(documentFromPreset("deepseek")));
+  assert.equal(parsed?.active, "deepseek");
+  assert.equal(parsed?.endpoints[0]?.baseURL, "https://api.deepseek.com/v1");
+  assert.equal(parsed?.endpoints[0]?.model, "deepseek-v4-pro");
+});
+
+test("roles select chat, compact, and fallback endpoints", async () => {
+  const { parseInferenceEndpointsDocument, endpointForRole, distinctEndpointForRole } = await load();
+  const document = parseInferenceEndpointsDocument({
+    schemaVersion: 1,
+    active: "chat",
+    roles: { chat: "chat", compact: "compact", fallback: "fallback" },
+    endpoints: [
+      { id: "chat", kind: "openai-compatible", baseURL: "https://openrouter.ai/api/v1", apiKeySecret: "OPENROUTER_API_KEY", model: "openai/gpt-5.6-sol", contextWindow: 1_050_000, compactAt: 0.75 },
+      { id: "compact", kind: "openai-compatible", baseURL: "https://openrouter.ai/api/v1", apiKeySecret: "OPENROUTER_API_KEY", model: "google/gemini-3.7-flash", contextWindow: 1_048_576 },
+      { id: "fallback", kind: "openai-compatible", baseURL: "https://openrouter.ai/api/v1", apiKeySecret: "OPENROUTER_API_KEY", model: "deepseek/deepseek-v4-pro", contextWindow: 1_000_000 },
+    ],
+  });
+  assert.equal(endpointForRole(document, "chat").model, "openai/gpt-5.6-sol");
+  assert.equal(endpointForRole(document, "compact").model, "google/gemini-3.7-flash");
+  assert.equal(distinctEndpointForRole(document, "fallback")?.model, "deepseek/deepseek-v4-pro");
+  const legacy = parseInferenceEndpointsDocument({
+    schemaVersion: 1,
+    active: "openrouter",
+    endpoints: [{ id: "openrouter", kind: "openai-compatible", baseURL: "https://openrouter.ai/api/v1", apiKeySecret: "OPENROUTER_API_KEY", model: "openai/gpt-5.6-sol" }],
+  });
+  assert.equal(endpointForRole(legacy, "compact").id, "openrouter");
+  assert.equal(distinctEndpointForRole(legacy, "fallback"), undefined);
+});
+
+test("fallback chain tries listed endpoints in order", async () => {
+  const { parseInferenceEndpointsDocument, retryEndpointChain, fallbackEndpointIds } = await load();
+  const document = parseInferenceEndpointsDocument({
+    schemaVersion: 1,
+    active: "chat",
+    roles: { chat: "chat", compact: "compact", fallbacks: ["fallback", "fallback-2"] },
+    endpoints: [
+      { id: "chat", kind: "openai-compatible", baseURL: "https://openrouter.ai/api/v1", apiKeySecret: "OPENROUTER_API_KEY", model: "openai/gpt-5.6-sol" },
+      { id: "compact", kind: "openai-compatible", baseURL: "https://openrouter.ai/api/v1", apiKeySecret: "OPENROUTER_API_KEY", model: "google/gemini-3.7-flash" },
+      { id: "fallback", kind: "openai-compatible", baseURL: "https://relay-a.example/v1", apiKeySecret: "RELAY_A_API_KEY", model: "model-a" },
+      { id: "fallback-2", kind: "openai-compatible", baseURL: "https://relay-b.example/v1", apiKeySecret: "RELAY_B_API_KEY", model: "model-b" },
+    ],
+  });
+  assert.deepEqual(fallbackEndpointIds(document), ["fallback", "fallback-2"]);
+  assert.deepEqual(retryEndpointChain(document, "chat").map((endpoint) => endpoint.id), ["chat", "fallback", "fallback-2"]);
+  assert.deepEqual(retryEndpointChain(document, "compact").map((endpoint) => endpoint.id), ["compact", "chat", "fallback", "fallback-2"]);
+});
+
+test("sticky failover keeps a working model then rotates after two failures", async () => {
+  const { parseInferenceEndpointsDocument, retryEndpointChain } = await load();
+  const base = {
+    schemaVersion: 1,
+    active: "chat",
+    roles: { chat: "chat", fallbacks: ["fallback", "fallback-2"] },
+    endpoints: [
+      { id: "chat", kind: "openai-compatible", baseURL: "https://openrouter.ai/api/v1", apiKeySecret: "OPENROUTER_API_KEY", model: "openai/gpt-5.6-sol" },
+      { id: "fallback", kind: "openai-compatible", baseURL: "https://relay-a.example/v1", apiKeySecret: "RELAY_A_API_KEY", model: "model-a" },
+      { id: "fallback-2", kind: "openai-compatible", baseURL: "https://relay-b.example/v1", apiKeySecret: "RELAY_B_API_KEY", model: "model-b" },
+    ],
+  };
+  const stuck = parseInferenceEndpointsDocument({ ...base, sticky: { chat: "fallback", failures: { fallback: 0 } } });
+  assert.deepEqual(retryEndpointChain(stuck, "chat").map((endpoint) => endpoint.id), ["fallback", "fallback-2", "chat"]);
+  const failed = parseInferenceEndpointsDocument({ ...base, sticky: { chat: "fallback", failures: { fallback: 2 } } });
+  assert.deepEqual(retryEndpointChain(failed, "chat").map((endpoint) => endpoint.id), ["fallback-2", "chat", "fallback"]);
+});

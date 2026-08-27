@@ -7,10 +7,11 @@ import { createSandCursorBackendClient, getSandInferenceBackendUrl } from "../..
 import { getAccessTokenExpiryMs } from "../../shared/node/cursor-token.js";
 import { getSandBackendClientHeaders } from "../../shared/node/sand-client-metadata.js";
 import { parseSandBoxMigrationOperationId } from "../../shared/box-migration.js";
-import { GATEWAY_ACCESS_DENIED_MESSAGE_MARKER, CLOUD_AGENT_STORAGE_DISABLED, GATEWAY_NO_STORAGE_MESSAGE_MARKER, SAND_BOX_BLOCKED, SAND_BOX_BLOCK_REASON_KEY, encodeSandBoxBlockedMessage, type SandBoxBlockedInfo } from "../../shared/gateway-reachability.js";
+import { GATEWAY_ACCESS_DENIED_MESSAGE_MARKER, CLOUD_AGENT_STORAGE_DISABLED, GATEWAY_NO_STORAGE_MESSAGE_MARKER, GATEWAY_NO_SERVER_MESSAGE_MARKER, SAND_BOX_BLOCKED, SAND_BOX_BLOCK_REASON_KEY, encodeSandBoxBlockedMessage, type SandBoxBlockedInfo } from "../../shared/gateway-reachability.js";
 import { GATEWAY_NETWORK_TOKEN_HEADER } from "../../shared/gateway-wire.js";
 import { createGatewayConnectFastPath, type GatewayConnection, type GatewayDescriptorStore } from "./gateway-descriptor-cache.js";
 import type { RecreateResult } from "./box-recreate-commands.js";
+import type { SelfHostGatewayRecord } from "./self-host-credentials.js";
 
 export const LOCAL_EXEC_DAEMON_CREDENTIAL_PATH = "/sand-box/local-exec-daemon-credential";
 export const GATEWAY_URL_ENV = "SAND_HOST_GATEWAY_URL";
@@ -22,6 +23,11 @@ export const BOX_BLOCKED_FALLBACK_HOLD_MS = 60_000;
 export const BOX_BLOCKED_MAX_HOLD_MS = 15 * 60_000;
 
 export class SandBoxHostConnectError extends Error {}
+export class SandNoServerConfiguredError extends SandBoxHostConnectError {
+  constructor() {
+    super(`No server is configured. Open Settings → Server to install or connect. ${GATEWAY_NO_SERVER_MESSAGE_MARKER}`);
+  }
+}
 export class SandComputerRecreateRefusedError extends Error {}
 
 export interface BrokerBox { gatewayUrl: string; gatewayToken: string; networkToken: string; vncUrl: string; forkVncBaseUrl: string }
@@ -32,6 +38,7 @@ export interface BrokerClient {
 }
 export interface BrokerDeps {
   getAccessToken(options: { backendUrl: string }): Promise<string>;
+  peekAccessToken?(): Promise<string | null>;
   getMachineId(): Promise<string> | string;
 }
 
@@ -146,9 +153,30 @@ export class EnvDescriptorHostConnector {
   }
 }
 
-export function createRemoteHostConnector(deps: BrokerDeps, env: NodeJS.ProcessEnv = process.env, updateSink?: { noteBackendUpdateRequirement(required: boolean): void }, descriptorFastPath?: { store: GatewayDescriptorStore; getAccountScope(): string | undefined }): SandRemoteHostConnector {
-  if ((env[GATEWAY_URL_ENV]?.trim() ?? "").length > 0) return new EnvDescriptorHostConnector(env);
+export function createRemoteHostConnector(deps: BrokerDeps, env: NodeJS.ProcessEnv = process.env, updateSink?: { noteBackendUpdateRequirement(required: boolean): void }, descriptorFastPath?: { store: GatewayDescriptorStore; getAccountScope(): string | undefined }, selfHost?: { read(): Promise<SelfHostGatewayRecord | null> }): SandRemoteHostConnector {
   const broker = new BrokeredHostConnector(deps, undefined, updateSink);
-  if (descriptorFastPath == null) return broker;
-  return { connect: createGatewayConnectFastPath(broker, descriptorFastPath), recreate: broker.recreate.bind(broker), forceRecreate: broker.forceRecreate.bind(broker), issueLocalExecDaemonCredential: broker.issueLocalExecDaemonCredential.bind(broker), issueInferenceCredential: broker.issueInferenceCredential.bind(broker) };
+  const brokerConnect = descriptorFastPath == null ? () => broker.connect() : createGatewayConnectFastPath(broker, descriptorFastPath);
+  let peekedCursorToken: { readonly atMs: number; readonly token: string | null } | undefined;
+  return {
+    connect: async () => {
+      const envUrl = env[GATEWAY_URL_ENV]?.trim() ?? "";
+      if (envUrl.length > 0) {
+        return buildConnection(envUrl, env[GATEWAY_TOKEN_ENV]?.trim() ?? "", env[GATEWAY_NETWORK_TOKEN_ENV]?.trim() ?? "");
+      }
+      const stored = await selfHost?.read();
+      if (stored != null && stored.gatewayUrl.length > 0) return buildConnection(stored.gatewayUrl, stored.token, stored.networkToken ?? "");
+      if (deps.peekAccessToken != null) {
+        const nowMs = Date.now();
+        if (peekedCursorToken == null || nowMs - peekedCursorToken.atMs > 10_000) {
+          peekedCursorToken = { atMs: nowMs, token: await deps.peekAccessToken() };
+        }
+        if (peekedCursorToken.token == null) throw new SandNoServerConfiguredError();
+      }
+      return brokerConnect();
+    },
+    recreate: broker.recreate.bind(broker),
+    forceRecreate: broker.forceRecreate.bind(broker),
+    issueLocalExecDaemonCredential: broker.issueLocalExecDaemonCredential.bind(broker),
+    issueInferenceCredential: broker.issueInferenceCredential.bind(broker),
+  };
 }

@@ -5,8 +5,13 @@ export interface CursorAccountStatus {
   readonly [key: string]: unknown;
 }
 
-export function cursorAccountSlot(status: CursorAccountStatus): string | null {
-  if (status.kind !== "logged-in") return null;
-  const slot = status.authId ?? status.email;
-  return slot == null || slot.length === 0 ? null : slot;
+/** Local identity when Cursor is not signed in. Coordinator still starts. */
+export const LOCAL_UNSIGNED_ACCOUNT_SLOT = "local";
+
+export function cursorAccountSlot(status: CursorAccountStatus): string {
+  if (status.kind === "logged-in") {
+    const slot = status.authId ?? status.email;
+    if (slot != null && slot.length > 0) return slot;
+  }
+  return LOCAL_UNSIGNED_ACCOUNT_SLOT;
 }

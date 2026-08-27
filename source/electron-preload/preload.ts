@@ -1,9 +1,11 @@
-import { CLIENT_PERSISTENCE_CHANNELS } from "../shared/persistence.js";
+import { createDesktopBridge } from "../client-runtime/desktop-bridge.js";
+import { detectHostPlatformTarget } from "../shared/platform-targets.js";
 import {
   createCoordinatorPortBroker,
   wrapTransferredCoordinatorPort,
   type CoordinatorPortConsumer,
 } from "./coordinator-port-bridge.js";
+import { createElectronPreloadTransport } from "./ipc-session-transport.js";
 import { MAIN_RPC_CONTRACT_NAME, MAIN_RPC_METHOD_TABLE } from "./main-rpc-runtime.js";
 import { bridgeRpcEdge } from "./rpc-edge-runtime.js";
 
@@ -33,12 +35,6 @@ export function createMainEdgeTransport(ipc: PreloadIpcRenderer): {
       return () => ipc.off(channel, wrapped);
     },
   };
-}
-
-function subscribeIpc(ipc: PreloadIpcRenderer, channel: string, listener: (payload: any) => void): () => void {
-  const wrapped = (_event: unknown, payload: any): void => listener(payload);
-  ipc.on(channel, wrapped);
-  return () => ipc.off(channel, wrapped);
 }
 
 export const DESKTOP_TELEMETRY_CHANNELS = {
@@ -103,188 +99,24 @@ export function createDesktopPreloadBridge(options: {
   readonly initialState?: PrimaryPreloadInitialState;
   readonly devRestartEnabled?: boolean;
 }): Record<string, any> {
-  const { ipc, mainEdge } = options;
   const env = options.env ?? process.env;
   const isDevRestartEnabled = options.devRestartEnabled ?? hasDevRestart(env);
-  const edge = (method: string, ...args: any[]): any => mainEdge[method]!(...args);
-  const subscribe = (event: string, listener: (payload: any) => void): (() => void) => mainEdge.subscribe({ [event]: listener });
-  const initialState = options.initialState ?? readPrimaryPreloadInitialState(ipc);
-  const desktop: Record<string, any> = {
-    resolveAttachmentMedia: (url: string) => edge("resolveAttachmentMedia", { source: url }),
-    readAttachmentText: (path: string) => edge("readAttachmentText", { path }),
-    readAttachmentBytes: (path: string, maxBytes: number) => edge("readAttachmentBytes", { path, maxBytes }),
-    downloadAttachment: (path: string, suggestedName?: string) => edge("downloadAttachment", { path, suggestedName }),
-    getLinkMetadata: (url: string) => edge("getLinkMetadata", { url }),
-    async openExternal(url: string) { await edge("openExternal", { url }); },
-    async openCloudAgent(bcId: string) { await edge("openCloudAgent", { bcId }); },
-    stageAttachmentBytes: (filename: string, bytes: Uint8Array) => edge("stageAttachmentBytes", { filename, bytes }),
-    commitStagedAttachments: (paths: readonly string[], filenames: readonly string[]) => edge("commitStagedAttachments", { paths, filenames }),
-    async discardStagedAttachment(path: string) { await edge("discardStagedAttachment", { path }); },
-    mcp: {
-      list: () => ipc.invoke("sand:mcp-list"),
-      effectivePlugins: () => ipc.invoke("sand:mcp-effective-plugins"),
-      catalog: () => ipc.invoke("sand:mcp-catalog"),
-      teamPopularity: () => ipc.invoke("sand:mcp-team-popularity"),
-      pluginLogo: (url: string) => ipc.invoke("sand:mcp-plugin-logo", { url }),
-      install: (request: unknown) => ipc.invoke("sand:mcp-install", request),
-      updatePluginInstall: (request: unknown) => ipc.invoke("sand:mcp-update-plugin-install", request),
-      remove: (serverId: string) => ipc.invoke("sand:mcp-remove", { serverId }),
-      uninstallPlugin: (pluginId: string) => ipc.invoke("sand:mcp-uninstall-plugin", { pluginId }),
-      authenticate: (serverId: string, accountKey?: unknown, trigger?: unknown) => ipc.invoke("sand:mcp-auth", {
-        serverId,
-        ...(accountKey != null ? { accountKey } : {}),
-        ...(trigger != null ? { trigger } : {}),
-      }),
-      renameAccount: (args: unknown) => ipc.invoke("sand:mcp-rename-account", args),
-      removeAccount: (args: unknown) => ipc.invoke("sand:mcp-remove-account", args),
-      setCustomInstructions: (args: unknown) => ipc.invoke("sand:mcp-set-instructions", args),
-      listServerTools: (serverId: string) => ipc.invoke("sand:mcp-list-server-tools", { serverId }),
-      toggleToolDisabled: (args: unknown) => ipc.invoke("sand:mcp-toggle-tool-disabled", args),
-      onAuthCompleted: (listener: (payload: unknown) => void) => subscribeIpc(ipc, "sand:mcp-auth-event", listener),
-    },
-    async forceGatewayReconnect() { await edge("forceReconnectGateway"); },
-    pickAvatarSource: () => edge("pickAvatarSource"),
-    pickAvatarFile: () => edge("pickAvatarFile"),
-    generateAgentAvatarImage: (description: string) => edge("generateAgentAvatarImage", { description }),
-    onFocusAgent: (listener: (payload: unknown) => void) => subscribe("focus-agent", listener),
-    onDeepLink: (listener: (payload: unknown) => void) => subscribe("deep-link", listener),
-    async deepLinksReady() { await edge("markDeepLinksReady"); },
-    getBoxMigrationStatus: () => edge("getBoxMigrationStatus"),
-    onBoxMigration: (listener: (payload: unknown) => void) => subscribe("box-migration", listener),
-    onDevBoxRebuild: (listener: (payload: unknown) => void) => subscribe("dev-box-rebuild", listener),
-    onOpenFeedback: (listener: () => void) => subscribe("open-feedback", () => listener()),
-    onOpenAbout: (listener: () => void) => subscribe("open-about", () => listener()),
-    submitFeedback: (payload: unknown) => edge("submitFeedback", payload),
-    onWidgetGallery: (listener: (payload: unknown) => void) => subscribeIpc(ipc, "sand:dev-widget-gallery", listener),
-    onForceOnboarding: (listener: () => void) => subscribe("force-onboarding", () => listener()),
-    transcribeAudio: (audio: Uint8Array, mimeType: string, language?: string) => edge("transcribeAudio", { audio, mimeType, language }),
-    cursorAccount: {
-      getStatus: () => edge("getCursorAuthStatus"),
-      login: () => edge("loginCursor"),
-      cancelLogin: () => edge("cancelCursorLogin"),
-      logout: () => edge("logoutCursor"),
-      updateName: (name: string) => edge("updateCursorAccountName", { name }),
-      getAvatar: () => edge("getCursorAvatar"),
-      getWeeklyUsage: () => edge("getCursorWeeklyUsage"),
-      getUsageSummary: () => edge("getCursorUsageSummary"),
-      getPrReviewPreferences: () => edge("getCursorPrReviewPreferences"),
-      getPrivacyModeEnabled: () => edge("getCursorPrivacyModeEnabled"),
-      getSandAccess: () => edge("getSandAccess"),
-      getSandAccessFresh: () => edge("getSandAccessFresh"),
-      invokeDashboardAction: (request: unknown) => edge("invokeCursorDashboardAction", request),
-      cancelTrial: () => edge("cancelCursorSandTrial"),
-      onStatusChanged: (listener: (payload: unknown) => void) => subscribe("cursor-auth-changed", listener),
-    },
-    experiments: {
-      initialSnapshot: initialState.experimentSnapshot,
-      getSnapshot: () => edge("getExperimentsSnapshot"),
-      async applyFeatureFlagOverride(command: unknown) { await edge("applyFeatureFlagOverride", { command }); },
-      async refresh() { await edge("refreshFeatureFlags"); },
-      async startRpcTraceWindow() { return await edge("startRpcTraceWindow") === true; },
-      onChanged: (listener: (payload: unknown) => void) => subscribe("experiments-changed", listener),
-    },
+  const initialState = options.initialState ?? readPrimaryPreloadInitialState(options.ipc);
+  const transport = createElectronPreloadTransport({ ipc: options.ipc, mainEdge: options.mainEdge });
+  const desktop = createDesktopBridge({
+    transport,
+    target: detectHostPlatformTarget(options.platform ?? process.platform, process.arch, env),
     platform: options.platform ?? process.platform,
     isDev: isDevRestartEnabled,
-    getWindowState: () => edge("getWindowState"),
-    onWindowStateEvent: (listener: (payload: unknown) => void) => subscribe("window-state", listener),
-    getZoomFactor: () => options.webFrame.getZoomFactor(),
-    onZoomFactorEvent: (listener: (factor: number) => void) => subscribe("zoom-factor-changed", ({ factor }) => listener(factor)),
-    windowControls: {
-      async minimize() { await edge("minimizeWindow"); },
-      async toggleMaximize() { await edge("toggleMaximizeWindow"); },
-      async close() { await edge("closeWindow"); },
-      async setTitleBarOverlayTone(isOverlayTone: boolean) { await edge("setTitleBarOverlayTone", { isOverlayTone }); },
-      resizeWidth: (deltaWidth: number) => edge("resizeWindowWidth", { deltaWidth }),
-    },
-    foreverBox: {
-      forceRecreate: () => edge("forceRecreateComputer"),
-      update: (id: string, force = false) => edge("updateComputer", { id, force }),
-      onVncUserPresence: (listener: (value: boolean) => void) => subscribe("vnc-user-presence", ({ isPresent }) => listener(isPresent)),
-      onDevBoxPullProgress: (listener: (payload: unknown) => void) => subscribe("dev-box-pull-progress", listener),
-      egressTunnel: {
-        initial: initialState.egressTunnelEnabled,
-        get: async () => await edge("getEgressTunnelEnabled") === true,
-        set: async (enabled: boolean) => await edge("setEgressTunnelEnabled", { enabled }) === true,
-        onChanged: (listener: (value: boolean) => void) => subscribe("egress-tunnel-changed", (enabled) => listener(enabled === true)),
-        initialStatus: initialState.egressTunnelStatus,
-        getStatus: () => edge("getEgressTunnelStatus"),
-        onStatusChanged: (listener: (payload: unknown) => void) => subscribe("egress-tunnel-status-changed", listener),
-      },
-      webauthnProxy: {
-        initial: initialState.webauthnProxyEnabled,
-        get: async () => await edge("getWebauthnProxyEnabled") === true,
-        set: async (enabled: boolean) => await edge("setWebauthnProxyEnabled", { enabled }) === true,
-        onChanged: (listener: (value: boolean) => void) => subscribe("webauthn-proxy-changed", (enabled) => listener(enabled === true)),
-      },
-    },
-    onboarding: {
-      getSeen: () => edge("getOnboardingSeen"),
-      async setSeen(seen: boolean) { await edge("setOnboardingSeen", { seen }); },
-      onSkip: (listener: () => void) => subscribe("skip-onboarding", () => listener()),
-    },
-    telemetry: createDesktopTelemetryBridge(ipc),
-    timeZone: {
-      get: () => edge("getTimeZone"),
-      setOverride: (timeZone: string | null) => edge("setTimeZoneOverride", { timeZone }),
-    },
-    autoReviewInstructions: {
-      get: () => edge("getAutoReviewInstructions"),
-      set: (instructions: unknown) => edge("setAutoReviewInstructions", { instructions }),
-    },
-    localToolPermission: {
-      get: () => edge("getLocalToolPermission"),
-      set: (permission: unknown) => edge("setLocalToolPermission", { permission }),
-      ceiling: () => edge("getLocalToolPermissionCeiling"),
-      async recordApproval(approvalId: string, action: unknown, target: unknown) { await edge("recordLocalToolApproval", { approvalId, action, target }); },
-      async clearApprovals() { await edge("clearLocalToolApprovals"); },
-    },
-    theme: {
-      initial: initialState.themeState,
-      get: () => edge("getThemeState"),
-      set: (preference: unknown) => edge("setThemePreference", { preference }),
-      onChanged: (listener: (payload: unknown) => void) => subscribe("theme-changed", listener),
-    },
-    secrets: {
-      list: () => ipc.invoke("sand:secrets-list"),
-      reveal: (key: string) => ipc.invoke("sand:secrets-reveal", { key }),
-      upsert: (entries: Record<string, string>) => ipc.invoke("sand:secrets-upsert", { entries }),
-      remove: (keys: readonly string[]) => ipc.invoke("sand:secrets-delete", { keys }),
-    },
-    agent: {
-      getPinnedAgents: () => edge("getHostPinnedAgents"),
-      setPinnedAgents: (pinnedAgentIds: readonly string[]) => edge("setHostPinnedAgents", { pinnedAgentIds }),
-      getSidebarSections: () => edge("getHostSidebarSections"),
-      setSidebarSections: (sections: readonly unknown[]) => edge("setHostSidebarSections", { sections }),
-      getDefaultModel: () => edge("getAgentDefaultModel"),
-      setDefaultModel: (model: unknown) => edge("setAgentDefaultModel", { model }),
-      getComputerUseModel: () => edge("getComputerUseModel"),
-      setComputerUseModel: (model: unknown) => edge("setComputerUseModel", { model }),
-      getAvailableModels: () => edge("getAvailableModels"),
-      getInferenceRouter: () => edge("getInferenceRouter"),
-      setInferenceRouter: (provider: string) => edge("setInferenceRouter", { provider }),
-      getBoxRuntime: () => edge("getBoxRuntime"),
-      setBoxRuntime: (mode: string) => edge("setBoxRuntime", { mode }),
-      clientPersistence: {
-        read: (key: string) => ipc.invoke(CLIENT_PERSISTENCE_CHANNELS.read, { key }),
-        async write(key: string, value: string) { await ipc.invoke(CLIENT_PERSISTENCE_CHANNELS.write, { key, value }); },
-        async remove(key: string) { await ipc.invoke(CLIENT_PERSISTENCE_CHANNELS.remove, { key }); },
-        listKeys: (prefix: string) => ipc.invoke(CLIENT_PERSISTENCE_CHANNELS.listKeys, { prefix }),
-        migrateFromLocalStorage: (entries: readonly unknown[]) => ipc.invoke(CLIENT_PERSISTENCE_CHANNELS.migrate, { entries }),
-      },
-    },
-    update: {
-      getStatus: () => edge("getUpdateStatus"),
-      check: () => edge("checkForUpdates"),
-      setTrack: (track: unknown) => edge("setUpdateTrack", { track }),
-      async quitAndInstall() { await edge("quitAndInstallUpdate"); },
-      setAutoUpdateWhenIdleOptIn: (enabled: boolean) => edge("setAutoUpdateWhenIdleOptIn", { enabled }),
-      onStatusEvent: (listener: (payload: unknown) => void) => subscribe("update-status", listener),
-    },
-  };
-  if (isDevRestartEnabled) desktop.devRestart = async () => { await ipc.invoke("sand:dev-restart"); };
+    zoomFactor: () => options.webFrame.getZoomFactor(),
+    initialState,
+  });
+  if (isDevRestartEnabled) {
+    desktop.devRestart = async () => { await options.ipc.invoke("sand:dev-restart"); };
+  }
   desktop.attachProdBox = {
-    getStatus: () => ipc.invoke("sand:attach-prod-box-status"),
-    setEnabled: (enabled: boolean, attachOptions?: { readonly isRestartMainApp?: boolean }) => ipc.invoke("sand:attach-prod-box-set-enabled", {
+    getStatus: () => options.ipc.invoke("sand:attach-prod-box-status"),
+    setEnabled: (enabled: boolean, attachOptions?: { readonly isRestartMainApp?: boolean }) => options.ipc.invoke("sand:attach-prod-box-set-enabled", {
       enabled,
       isRestartMainApp: attachOptions?.isRestartMainApp,
     }),

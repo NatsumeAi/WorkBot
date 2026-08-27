@@ -7,6 +7,7 @@ import { isValidIanaTimeZone } from "../shared/timezone.js";
 import { sandWebauthnProxyMirroredEnablement } from "../shared/webauthn-proxy-availability.js";
 import { reportDesktopEdgeFailure } from "./desktop-edge-failures.js";
 import { isSandInferenceProvider } from "../shared/inference-router.js";
+import { mergePreservedSticky, parseInferenceEndpointsDocument, publicInferenceEndpointsDocument } from "../shared/inference-endpoints.js";
 import { getLocalInferenceCliStatus } from "../shared/node/inference-router-local.js";
 import { isSandBoxRuntime } from "../shared/box-runtime.js";
 import { getLocalDockerStatus, startLocalDockerBox, stopLocalDockerBox } from "./box/local-docker-host-connector.js";
@@ -58,6 +59,7 @@ export interface MainEdgeDeps {
   readonly platform: NodeJS.Platform;
   readonly delay?: (milliseconds: number) => Promise<void>;
   readonly detectTimeZone?: () => string | null | undefined;
+  readonly selfHost?: UnknownRecord;
 }
 
 function invariant(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
@@ -72,6 +74,7 @@ function required(read: () => UnknownRecord | null, code: string, detail: string
 function updateService(deps: MainEdgeDeps) { return required(deps.readLiveUpdateService, MAIN_EDGE_UPDATE_UNAVAILABLE, "The update service is not running."); }
 function themeController(deps: MainEdgeDeps) { return required(deps.readThemeController, MAIN_EDGE_THEME_UNAVAILABLE, "The theme controller is not running."); }
 function egressController(deps: MainEdgeDeps) { return required(deps.readEgressTunnelController, MAIN_EDGE_EGRESS_TUNNEL_UNAVAILABLE, "The egress tunnel controller is not running."); }
+function selfHost(deps: MainEdgeDeps) { return required(() => deps.selfHost ?? null, MAIN_EDGE_UNSERVED, "Self-host is not available."); }
 async function echo(deps: MainEdgeDeps, field: string, value: unknown, label: string): Promise<unknown> { const result = await deps.syncHostSettingsToBox({ [field]: value }); if (result == null) throw new SandHostSettingsUnreachableError(`Couldn't reach the computer to save ${label}.`); return result[field] ?? null; }
 function computerUseModel(deps: MainEdgeDeps): unknown { const stored = invoke(deps.agentPrefsStore, "getComputerUseModel"); const override = deps.getComputerUseModelOverride(); return resolveComputerUseModelSelection({ ...(isSandAgentModelSelection(stored) ? { storedModel: stored } : {}), ...(isSandAgentModelSelection(override) ? { overrideModel: override } : {}) }) ?? null; }
 function parseAgentModel(value: unknown, requireNonWhitespaceId: boolean): { modelId: string; maxMode: boolean; parameters: { id: string; value: string }[] } | null {
@@ -112,10 +115,39 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
     getHostSidebarSections: async () => (await deps.readHostSettingsFromBox()).sidebarSections ?? null,
     setHostSidebarSections: (raw) => echo(deps, "sidebarSections", req(raw).sections, "sidebar sections"),
     getAvailableModels: () => deps.fetchAvailableModels(),
-    getInferenceRouter: async () => { const settings = await deps.readHostSettingsFromBox().catch(() => ({} as UnknownRecord)); const provider = invoke(deps.settingsStore, "getInferenceProvider"); return { provider: isSandInferenceProvider(provider) ? provider : "cursor", usage: settings.inferenceRouterUsage ?? invoke(deps.settingsStore, "getInferenceRouterUsage") ?? null, local: getLocalInferenceCliStatus() }; },
+    getInferenceRouter: async () => {
+      const settings = await deps.readHostSettingsFromBox().catch(() => ({} as UnknownRecord));
+      const provider = invoke(deps.settingsStore, "getInferenceProvider");
+      const fromBox = parseInferenceEndpointsDocument(settings.inferenceEndpoints);
+      const fromLocal = invoke(deps.settingsStore, "getInferenceEndpoints") as ReturnType<typeof parseInferenceEndpointsDocument>;
+      const endpoints = fromBox ?? (fromLocal == null ? null : parseInferenceEndpointsDocument(fromLocal));
+      return {
+        provider: isSandInferenceProvider(provider) ? provider : "cursor",
+        usage: settings.inferenceRouterUsage ?? invoke(deps.settingsStore, "getInferenceRouterUsage") ?? null,
+        local: getLocalInferenceCliStatus(),
+        endpoints: endpoints == null ? null : publicInferenceEndpointsDocument(endpoints),
+      };
+    },
     setInferenceRouter: async (raw) => { const provider = req(raw).provider; invariant(isSandInferenceProvider(provider), "Unknown inference provider."); invoke(deps.settingsStore, "setInferenceProvider", provider); const settings = await deps.syncHostSettingsToBox({ inferenceProvider: provider }).catch(() => null); return { provider, usage: settings?.inferenceRouterUsage ?? invoke(deps.settingsStore, "getInferenceRouterUsage") ?? null, local: getLocalInferenceCliStatus() }; },
+    setInferenceEndpoints: async (raw) => {
+      const document = parseInferenceEndpointsDocument(req(raw).document ?? raw);
+      if (document == null) return { ok: false, message: "Invalid model pool. Keys belong in Secrets, not in this document." };
+      const merged = mergePreservedSticky(document, invoke(deps.settingsStore, "getInferenceEndpoints") as ReturnType<typeof parseInferenceEndpointsDocument>);
+      invoke(deps.settingsStore, "setInferenceEndpoints", merged);
+      invoke(deps.settingsStore, "setInferenceProvider", "openrouter");
+      const settings = await deps.syncHostSettingsToBox({ inferenceProvider: "openrouter", inferenceEndpoints: publicInferenceEndpointsDocument(merged) }).catch(() => null);
+      const stored = parseInferenceEndpointsDocument(settings?.inferenceEndpoints) ?? merged;
+      return { ok: true, provider: "openrouter", endpoints: publicInferenceEndpointsDocument(stored), usage: settings?.inferenceRouterUsage ?? invoke(deps.settingsStore, "getInferenceRouterUsage") ?? null, local: getLocalInferenceCliStatus() };
+    },
     getBoxRuntime: async () => { const mode = invoke(deps.settingsStore, "getBoxRuntime"); invariant(isSandBoxRuntime(mode), "Unknown box runtime."); return { mode, status: await getLocalDockerStatus(String(Reflect.get(deps.settingsStore, "settingsPath"))) }; },
     setBoxRuntime: async (raw) => { const mode = req(raw).mode; invariant(isSandBoxRuntime(mode), "Unknown box runtime."); const settingsPath = String(Reflect.get(deps.settingsStore, "settingsPath")); invoke(deps.settingsStore, "setBoxRuntime", mode); try { if (mode === "local-docker") await startLocalDockerBox(settingsPath); else await stopLocalDockerBox(); } catch (error) { invoke(deps.settingsStore, "setBoxRuntime", mode === "local-docker" ? "remote" : "local-docker"); throw error; } invoke(deps.boxRecovery, "restartCoordinator"); return { mode, status: await getLocalDockerStatus(settingsPath) }; },
+    getSelfHostConnection: () => invoke(selfHost(deps), "getConnection"),
+    setSelfHostConnection: (raw) => invoke(selfHost(deps), "setConnection", raw),
+    getSelfHostInstallCommand: (raw) => invoke(selfHost(deps), "getInstallCommand", raw),
+    installSelfHostBox: (raw) => invoke(selfHost(deps), "install", raw),
+    testSelfHostGateway: (raw) => invoke(selfHost(deps), "testGateway", raw),
+    pickSelfHostKeyFile: () => invoke(selfHost(deps), "pickKeyFile"),
+    openSelfHostDocs: () => invoke(selfHost(deps), "openDocs"),
 
     getEgressTunnelEnabled: () => invoke(deps.boxToggleStore, "getEgressTunnelEnabled"),
     setEgressTunnelEnabled: (raw) => { const enabled = req(raw).enabled === true; invoke(deps.boxToggleStore, "setEgressTunnelEnabled", enabled); invoke(egressController(deps), "setEnabled", enabled); deps.emitEgressTunnelChanged(enabled); return enabled; },

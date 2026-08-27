@@ -43,7 +43,7 @@ export function createProductionSecretsIpcRegistrar(): ProductionIpcRegistrar {
       ipcMain: ipc,
       guards: createTrustedSenderGuards(context.getTrustedContents),
       stores: context.secretsStores,
-      pushBoxSecrets: () => context.secretsStores.pushBoxSecrets.push("edit"),
+      pushBoxSecrets: (trigger, extra) => context.secretsStores.pushBoxSecrets.push(trigger, extra),
     });
   };
 }

@@ -12,6 +12,18 @@ import { resolveClaudeCodeCliPath } from "../../../shared/node/inference-router-
 import { getSandRootDir } from "../../host-paths.js";
 import { SandSettingsStore } from "../../../shared/node/settings/sand-settings-store.js";
 import { getBoxSecretsStorePath } from "../secrets/secrets-service.js";
+import {
+  documentFromPreset,
+  distinctEndpointForRole,
+  effectiveContextWindow,
+  effectiveMaxOutputTokens,
+  effectiveReasoningEffort,
+  endpointForRole,
+  parseInferenceEndpointsDocument,
+  retryEndpointChain,
+  type InferenceEndpoint,
+  type InferenceEndpointRole,
+} from "../../../shared/inference-endpoints.js";
 import { streamCodexDirectResponses, type CodexDirectTool } from "./codex-direct-responses.js";
 import type { LabelMessage, PromptExecutor } from "./sand-labeling.js";
 
@@ -42,10 +54,49 @@ function persistedSecrets(): Record<string, string> {
   } catch { return {}; }
 }
 
+function secretValue(name: string): string | undefined {
+  const value = process.env[name]?.trim() || persistedSecrets()[name]?.trim();
+  return value != null && value.length > 0 ? value : undefined;
+}
+
 function openRouterCredential(): string {
-  const value = process.env.OPENROUTER_API_KEY?.trim() || persistedSecrets().OPENROUTER_API_KEY?.trim();
-  if (value == null || value.length === 0) throw new Error("OpenRouter needs OPENROUTER_API_KEY. Add it in Settings → Router.");
+  const value = secretValue("OPENROUTER_API_KEY");
+  if (value == null) throw new Error("OpenRouter needs OPENROUTER_API_KEY. Add it in Settings → Router.");
   return value;
+}
+
+function loadedEndpoints() {
+  try {
+    return parseInferenceEndpointsDocument(new SandSettingsStore(join(getSandRootDir(), "settings.json")).getInferenceEndpoints());
+  } catch { return undefined; }
+}
+
+function persistSticky(role: InferenceEndpointRole, winnerId?: string, failedId?: string): void {
+  const store = new SandSettingsStore(join(getSandRootDir(), "settings.json"));
+  const document = parseInferenceEndpointsDocument(store.getInferenceEndpoints());
+  if (document == null) return;
+  const failures = { ...(document.sticky?.failures ?? {}) };
+  if (failedId != null) failures[failedId] = Math.min(32, (failures[failedId] ?? 0) + 1);
+  if (winnerId != null) failures[winnerId] = 0;
+  store.setInferenceEndpoints({
+    ...document,
+    sticky: {
+      chat: role === "chat" && winnerId != null ? winnerId : document.sticky?.chat,
+      compact: role === "compact" && winnerId != null ? winnerId : document.sticky?.compact,
+      ...(Object.keys(failures).length > 0 ? { failures } : {}),
+    },
+  });
+}
+
+export function hostInferenceCanRunWithoutCursor(): boolean {
+  if (process.env.SAND_AGENT_MOCK_RESPONSE != null) return true;
+  const endpoints = loadedEndpoints();
+  if (endpoints != null) {
+    const needed = endpointForRole(endpoints, "chat").apiKeySecret;
+    if (secretValue(needed) != null) return true;
+    if (endpoints.endpoints.some((endpoint) => secretValue(endpoint.apiKeySecret) != null)) return true;
+  }
+  return secretValue("OPENROUTER_API_KEY") != null;
 }
 
 function providerPrompt(messages: readonly ProviderMessage[]): string {
@@ -244,28 +295,114 @@ function toToolSet(definitions: readonly Loose[] | undefined, executeTool?: Rout
   return Object.keys(tools).length === 0 ? undefined : tools;
 }
 
-function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: string, definitions?: readonly Loose[], executeTool?: RoutedToolExecutor, onUsage?: (usage: UsageRecord) => void) {
-  const id = process.env.SAND_OPENROUTER_MODEL?.trim() || "openai/gpt-5.2";
-  const model: LanguageModelV1 = createOpenAI({ apiKey: openRouterCredential(), baseURL: "https://openrouter.ai/api/v1", compatibility: "compatible", name: "openrouter", headers: { "HTTP-Referer": "https://github.com/grok-bot-reconstructed", "X-Title": "Grok Bot Reconstructed" } }).chat(id as any);
+function resolvedApiEndpoint(role: InferenceEndpointRole = "chat"): InferenceEndpoint {
+  const document = loadedEndpoints();
+  if (document != null) return endpointForRole(document, role);
+  const fallback = documentFromPreset("openrouter").endpoints[0]!;
+  const envModel = process.env.SAND_OPENROUTER_MODEL?.trim();
+  return envModel == null || envModel.length === 0 ? fallback : { ...fallback, model: envModel };
+}
+
+function isRetryableInferenceError(error: unknown): boolean {
+  const status = typeof error === "object" && error != null ? (error as { status?: unknown; statusCode?: unknown }).status ?? (error as { statusCode?: unknown }).statusCode : undefined;
+  if (typeof status === "number") {
+    if (status === 401 || status === 402 || status === 403 || status === 404 || status === 408 || status === 409 || status === 425 || status === 429 || status === 529) return true;
+    if (status >= 500 && status <= 599) return true;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return /401|403|404|408|429|500|502|503|504|529|rate limit|quota|insufficient|too many requests|overloaded|capacity|no available|model not found|not found|timeout|ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENOTFOUND|fetch failed|EAI_AGAIN|temporarily unavailable|try again|unavailable/i.test(message);
+}
+
+function streamOpenaiCompatible(endpoint: InferenceEndpoint, messages: readonly ProviderMessage[], invocationId: string, definitions?: readonly Loose[], executeTool?: RoutedToolExecutor, onUsage?: (usage: UsageRecord) => void) {
+  const apiKey = endpoint.apiKeySecret === "OPENROUTER_API_KEY" ? openRouterCredential() : secretValue(endpoint.apiKeySecret);
+  if (apiKey == null) throw new Error(`API endpoint "${endpoint.id}" needs ${endpoint.apiKeySecret}. Add it in Settings → Router.`);
+  const model: LanguageModelV1 = createOpenAI({
+    apiKey,
+    baseURL: endpoint.baseURL,
+    compatibility: "compatible",
+    name: endpoint.id,
+    ...(endpoint.headers == null ? {} : { headers: { ...endpoint.headers } }),
+  }).chat(endpoint.model as any);
   const tools = toToolSet(definitions, executeTool);
-  const result = streamText({ model, system: GROK_ROUTER_SYSTEM_PROMPT, messages: messages as CoreMessage[], ...(tools === undefined ? {} : { tools }), toolCallStreaming: true, maxSteps: tools === undefined ? 1 : 8 });
-  const extendedUsage = result.usage.then(value => ({ inputTokens: value.promptTokens, outputTokens: value.completionTokens, cacheReadTokens: 0, cacheWriteTokens: 0, maxTokens: 0 }));
+  const maxOutput = effectiveMaxOutputTokens(endpoint);
+  const effort = effectiveReasoningEffort(endpoint);
+  const contextWindow = effectiveContextWindow(endpoint);
+  const result = streamText({
+    model,
+    system: GROK_ROUTER_SYSTEM_PROMPT,
+    messages: messages as CoreMessage[],
+    ...(tools === undefined ? {} : { tools }),
+    ...(endpoint.temperature == null ? {} : { temperature: endpoint.temperature }),
+    ...(maxOutput == null ? {} : { maxTokens: maxOutput }),
+    ...(effort === "off" ? {} : { providerOptions: { openai: { reasoningEffort: effort } } }),
+    toolCallStreaming: true,
+    maxSteps: tools === undefined ? 1 : 8,
+  });
+  const extendedUsage = result.usage.then(value => ({
+    inputTokens: value.promptTokens,
+    outputTokens: value.completionTokens,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    maxTokens: contextWindow,
+  }));
   if (onUsage != null) void extendedUsage.then(onUsage);
   return { fullStream: result.fullStream, response: result.response, usage: result.usage, extendedUsage, providerMetadata: result.providerMetadata, invocationId: Promise.resolve(invocationId) };
 }
 
+function openaiCompatibleExecutor(messages: readonly ProviderMessage[], invocationId: string, definitions?: readonly Loose[], executeTool?: RoutedToolExecutor, onUsage?: (usage: UsageRecord) => void, role: InferenceEndpointRole = "chat") {
+  const document = loadedEndpoints();
+  const chain = document == null ? [resolvedApiEndpoint(role)] : retryEndpointChain(document, role);
+  const usage = deferred<{ promptTokens: number; completionTokens: number; totalTokens: number }>();
+  const extendedUsage = deferred<{ inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; maxTokens: number }>();
+  const resultResponse = deferred<Awaited<ReturnType<typeof streamOpenaiCompatible>["response"]>>();
+  const metadata = deferred<Awaited<ReturnType<typeof streamOpenaiCompatible>["providerMetadata"]>>();
+  const fullStream = (async function* () {
+    const run = async function* (endpoint: InferenceEndpoint) {
+      const result = streamOpenaiCompatible(endpoint, messages, invocationId, definitions, executeTool, onUsage);
+      for await (const event of result.fullStream) yield event;
+      usage.resolve(await result.usage);
+      extendedUsage.resolve(await result.extendedUsage);
+      resultResponse.resolve(await result.response);
+      metadata.resolve(await result.providerMetadata);
+    };
+    try {
+      for (let index = 0; index < chain.length; index += 1) {
+        let emitted = false;
+        try {
+          for await (const event of run(chain[index]!)) {
+            emitted = true;
+            yield event;
+          }
+          persistSticky(role, chain[index]!.id);
+          return;
+        } catch (error) {
+          persistSticky(role, undefined, chain[index]!.id);
+          if (emitted || !isRetryableInferenceError(error) || index === chain.length - 1) throw error;
+        }
+      }
+    } catch (error) {
+      usage.reject(error);
+      extendedUsage.reject(error);
+      resultResponse.reject(error);
+      metadata.reject(error);
+      throw error;
+    }
+  })();
+  return { fullStream, response: resultResponse.promise, usage: usage.promise, extendedUsage: extendedUsage.promise, providerMetadata: metadata.promise, invocationId: Promise.resolve(invocationId) };
+}
+
 class ProviderPromptExecutor extends BasePromptExecutor<ProviderMessage> {
-  constructor(readonly provider: RoutedProvider, initialMessages?: readonly ProviderMessage[], readonly onUsage?: (usage: UsageRecord) => void) { super(new BasePromptBuilder(initialMessages)); }
+  constructor(readonly provider: RoutedProvider, initialMessages?: readonly ProviderMessage[], readonly onUsage?: (usage: UsageRecord) => void, readonly role: InferenceEndpointRole = "chat") { super(new BasePromptBuilder(initialMessages)); }
   stream(_ctx: unknown, invocationId = crypto.randomUUID(), definitions?: readonly Loose[]) {
     if (this.provider === "codex") return codexExecutor(this.getMessages(), invocationId, definitions, undefined, this.onUsage);
     if (this.provider === "claude-code") return claudeExecutor(this.getMessages(), invocationId, this.onUsage);
-    return openRouterExecutor(this.getMessages(), invocationId, definitions, undefined, this.onUsage);
+    return openaiCompatibleExecutor(this.getMessages(), invocationId, definitions, undefined, this.onUsage, this.role);
   }
 }
 
-export function createProviderPromptSession(provider: RoutedProvider): { getModelId(): string; getExecutor(state?: unknown): PromptExecutor } {
-  const modelId = provider === "codex" ? configuredCodexModel() : provider === "claude-code" ? "claude-code" : process.env.SAND_OPENROUTER_MODEL?.trim() || "openai/gpt-5.2";
-  return { getModelId: () => modelId, getExecutor: state => new ProviderPromptExecutor(provider, Array.isArray(state) ? state as ProviderMessage[] : undefined, usage => recordRoutedUsage(provider, usage)) };
+export function createProviderPromptSession(provider: RoutedProvider, role: InferenceEndpointRole = "chat"): { getModelId(): string; getExecutor(state?: unknown): PromptExecutor } {
+  const modelId = provider === "codex" ? configuredCodexModel() : provider === "claude-code" ? "claude-code" : resolvedApiEndpoint(role).model;
+  return { getModelId: () => modelId, getExecutor: state => new ProviderPromptExecutor(provider, Array.isArray(state) ? state as ProviderMessage[] : undefined, usage => recordRoutedUsage(provider, usage), role) };
 }
 
 export async function runRoutedProviderText(provider: RoutedProvider, messages: readonly ProviderMessage[], options?: {
@@ -280,7 +417,7 @@ export async function runRoutedProviderText(provider: RoutedProvider, messages: 
     ? codexExecutor(messages, invocationId, options?.tools, options?.executeTool, onUsage)
     : provider === "claude-code"
       ? claudeExecutor(messages, invocationId, onUsage, options?.mcpServerUrl)
-      : openRouterExecutor(messages, invocationId, options?.tools, options?.executeTool, onUsage);
+      : openaiCompatibleExecutor(messages, invocationId, options?.tools, options?.executeTool, onUsage);
   let text = "";
   for await (const event of result.fullStream) {
     if (event.type === "text-delta" && typeof event.textDelta === "string") {

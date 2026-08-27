@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
+import { LOCAL_UNSIGNED_ACCOUNT_SLOT } from "../../shared/auth.js";
 import { SandClientPersistenceStore, type ClientPersistenceFiles } from "../../shared/client-persistence-store.js";
 import { CLIENT_PERSISTENCE_CHANNELS } from "../../shared/persistence.js";
 import { assertTrustedCoordinatorPortRequester } from "../coordinator/coordinator-port-ipc-guard.js";
@@ -42,14 +43,14 @@ export interface BoxSecretsPushReport {
 export function createBoxSecretsPush(deps: {
   readonly userSecretsStore: Pick<UserSecretsStore, "exportSnapshot">;
   readonly isAccountDeparting: () => boolean;
-  readonly setBoxSecrets: (request: { readonly secrets: Record<string, string> }) => Promise<{ readonly isApplied?: boolean }>;
+  readonly setBoxSecrets: (request: { readonly secrets: Record<string, string>; readonly merge?: boolean; readonly removeKeys?: readonly string[] }) => Promise<{ readonly isApplied?: boolean }>;
   readonly report: (report: BoxSecretsPushAttempt) => void;
 }): {
-  push(trigger: string): Promise<boolean>;
-  pushOrThrow(trigger: string): Promise<void>;
+  push(trigger: string, extra?: { readonly merge?: boolean; readonly removeKeys?: readonly string[] }): Promise<boolean>;
+  pushOrThrow(trigger: string, extra?: { readonly merge?: boolean; readonly removeKeys?: readonly string[] }): Promise<void>;
   quiesce(): Promise<void>;
 } {
-  const attempt = async (trigger: string): Promise<{ ok: true } | { ok: false; error: unknown }> => {
+  const attempt = async (trigger: string, extra?: { readonly merge?: boolean; readonly removeKeys?: readonly string[] }): Promise<{ ok: true } | { ok: false; error: unknown }> => {
     const departing = deps.isAccountDeparting();
     let snapshot: Awaited<ReturnType<typeof deps.userSecretsStore.exportSnapshot>>;
     try { snapshot = await deps.userSecretsStore.exportSnapshot(); }
@@ -58,8 +59,17 @@ export function createBoxSecretsPush(deps: {
       return { ok: false, error };
     }
     const sentCount = Object.keys(snapshot.secrets).length;
+    const removeKeys = extra?.removeKeys ?? [];
+    if (!departing && sentCount === 0 && removeKeys.length === 0) {
+      deps.report({ outcome: "ok", trigger, accountScope: snapshot.accountScope, departing, secretCount: 0, applied: false });
+      return { ok: true };
+    }
     try {
-      const status = await deps.setBoxSecrets({ secrets: snapshot.secrets });
+      const status = await deps.setBoxSecrets({
+        secrets: snapshot.secrets,
+        merge: departing ? false : extra?.merge !== false,
+        ...(removeKeys.length > 0 ? { removeKeys } : {}),
+      });
       deps.report({ outcome: "ok", trigger, accountScope: snapshot.accountScope, departing, secretCount: sentCount, applied: status.isApplied === true });
       return { ok: true };
     } catch (error) {
@@ -69,15 +79,15 @@ export function createBoxSecretsPush(deps: {
   };
   let queue: Promise<{ ok: true } | { ok: false; error: unknown }> = Promise.resolve({ ok: true });
   let quiesced = false;
-  const enqueue = (trigger: string): Promise<{ ok: true } | { ok: false; error: unknown }> => {
+  const enqueue = (trigger: string, extra?: { readonly merge?: boolean; readonly removeKeys?: readonly string[] }): Promise<{ ok: true } | { ok: false; error: unknown }> => {
     if (quiesced) return Promise.resolve({ ok: false, error: new SandBoxSecretsPushQuiescedError() });
-    const run = queue.then(() => quiesced ? { ok: false as const, error: new SandBoxSecretsPushQuiescedError() } : attempt(trigger));
+    const run = queue.then(() => quiesced ? { ok: false as const, error: new SandBoxSecretsPushQuiescedError() } : attempt(trigger, extra));
     queue = run;
     return run;
   };
   return {
-    push: async (trigger) => (await enqueue(trigger)).ok,
-    pushOrThrow: async (trigger) => { const result = await enqueue(trigger); if (!result.ok) throw result.error; },
+    push: async (trigger, extra) => (await enqueue(trigger, extra)).ok,
+    pushOrThrow: async (trigger, extra) => { const result = await enqueue(trigger, extra); if (!result.ok) throw result.error; },
     quiesce: async () => { quiesced = true; await queue; },
   };
 }
@@ -116,7 +126,7 @@ export function registerSecretsIpc(deps: {
     readonly userSecretsStore: Pick<UserSecretsStore, "listKeys" | "isPersistent" | "reveal" | "upsert" | "remove">;
     readonly clientPersistenceStore: Pick<SandClientPersistenceStore, "read" | "write" | "remove" | "listKeys" | "migrateFromLocalStorage">;
   };
-  readonly pushBoxSecrets: () => Promise<boolean>;
+  readonly pushBoxSecrets: (trigger: string, extra?: { readonly merge?: boolean; readonly removeKeys?: readonly string[] }) => Promise<boolean>;
 }): void {
   const { ipcMain, guards, pushBoxSecrets } = deps;
   const { userSecretsStore, clientPersistenceStore } = deps.stores;
@@ -132,13 +142,13 @@ export function registerSecretsIpc(deps: {
   ipcMain.handle("sand:secrets-upsert", async (event, request) => {
     guards.assertTrustedSecretsSender(event);
     await userSecretsStore.upsert(parseSecretEntries(request.entries));
-    return { synced: await pushBoxSecrets() };
+    return { synced: await pushBoxSecrets("upsert", { merge: true }) };
   });
   ipcMain.handle("sand:secrets-delete", async (event, request) => {
     guards.assertTrustedSecretsSender(event);
     const keys = Array.isArray(request.keys) ? request.keys.filter((key: unknown): key is string => typeof key === "string") : [];
     await userSecretsStore.remove(keys);
-    return { synced: await pushBoxSecrets() };
+    return { synced: await pushBoxSecrets("delete", { merge: true, removeKeys: keys }) };
   });
   ipcMain.handle(CLIENT_PERSISTENCE_CHANNELS.read, async (event, request) => {
     guards.assertTrustedClientPersistenceSender(event);
@@ -174,7 +184,7 @@ export function createSecretsStores(
     readonly reportTelemetry: (level: "info" | "warn", metadata: Readonly<Record<string, string>>) => void;
     readonly isSignedIn: () => boolean;
     readonly isAccountDeparting: () => boolean;
-    readonly setBoxSecrets: (request: { readonly secrets: Record<string, string> }) => Promise<{ readonly isApplied?: boolean }>;
+    readonly setBoxSecrets: (request: { readonly secrets: Record<string, string>; readonly merge?: boolean; readonly removeKeys?: readonly string[] }) => Promise<{ readonly isApplied?: boolean }>;
   },
 ): {
   readonly userSecretsStore: SandUserSecretsStore;
@@ -182,7 +192,7 @@ export function createSecretsStores(
   readonly pushBoxSecrets: ReturnType<typeof createBoxSecretsPush>;
   readonly pushTelemetry: ReturnType<typeof createBoxSecretsPushTelemetry>;
 } {
-  const userSecretsStore = new SandUserSecretsStore(undefined, getAccountScope);
+  const userSecretsStore = new SandUserSecretsStore(undefined, () => getAccountScope() ?? LOCAL_UNSIGNED_ACCOUNT_SLOT);
   const pushTelemetry = createBoxSecretsPushTelemetry({
     report: push.reportTelemetry,
     isSignedIn: push.isSignedIn,

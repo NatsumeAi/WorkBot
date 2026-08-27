@@ -6,6 +6,7 @@ import { createEgressConnectionObserver } from "./box/remote-connector-egress.js
 import { createDesktopGatewayDescriptorFastPath } from "./box/gateway-descriptor-store.js";
 import { createRemoteHostConnector, type SandRemoteHostConnector } from "./box/box-host-connector.js";
 import { createSettingsRoutedHostConnector } from "./box/local-docker-host-connector.js";
+import { readSelfHostGateway } from "./box/self-host-credentials.js";
 import { createSandClientPauseControl } from "./box/box-client-pause.js";
 import { createSandMigrationWatcher } from "./box/box-migration-watcher.js";
 import type { RecreateResult } from "./box/box-recreate-commands.js";
@@ -649,6 +650,7 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
           env,
           { noteBackendUpdateRequirement: (required) => requireValue(update, "update").noteBackendUpdateRequirement(required) },
           gatewayFastPath,
+          { read: () => readSelfHostGateway(requireValue(settings, "settings").settingsStore.settingsPath) },
         ), requireValue(settings, "settings").settingsStore);
       const baseRemoteConnector = wrapRemoteHostConnectorWithDevBoxPlane(
         rawRemoteConnector,

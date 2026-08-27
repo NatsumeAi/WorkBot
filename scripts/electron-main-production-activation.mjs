@@ -83,6 +83,36 @@ export const electronMainExternalRuntimePackageSpecs = Object.freeze([
     lockPath: "node_modules/ws",
     integrity: "sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA==",
   },
+  {
+    name: "ssh2",
+    version: "1.17.0",
+    lockPath: "node_modules/ssh2",
+    integrity: "sha512-wPldCk3asibAjQ/kziWQQt1Wh3PgDFpC0XpwclzKcdT1vql6KeYxf5LIt4nlFkUeR8WuphYMKqUA56X4rjbfgQ==",
+  },
+  {
+    name: "asn1",
+    version: "0.2.6",
+    lockPath: "node_modules/asn1",
+    integrity: "sha512-ix/FxPn0MDjeyJ7i/yoHGFt/EX6LyNbxSEhPPXODPL+KB0VPk86UYfL0lMdy+KCnv+fmvIzySwaK5COwqVbWTQ==",
+  },
+  {
+    name: "safer-buffer",
+    version: "2.1.2",
+    lockPath: "node_modules/safer-buffer",
+    integrity: "sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==",
+  },
+  {
+    name: "bcrypt-pbkdf",
+    version: "1.0.2",
+    lockPath: "node_modules/bcrypt-pbkdf",
+    integrity: "sha512-qeFIXtP4MSoi6NLqO12WfqARWWuCKi2Rn/9hJLEmtB5yTNr9DqFWkJRCf2qShWzPeAMRnOgCrq0sg/KLv5ES9w==",
+  },
+  {
+    name: "tweetnacl",
+    version: "0.14.5",
+    lockPath: "node_modules/tweetnacl",
+    integrity: "sha512-KXXFFdAbFXY4geFIwoyNK+f5Z1b7swfXABfL7HXCmoIWMKU3dmS26672A4EeQtDzLKy7SXmfBu51JolvEKwtGA==",
+  },
 ]);
 
 const classifications = new Set(["generated-source", "third-party", "native"]);
@@ -411,7 +441,7 @@ export async function buildProductionElectronMainIfSupplied({ outputRoot, manife
     banner: { js: `const __import_meta_url = require("node:url").pathToFileURL(__filename).href;\n// Deterministic clean-source production Electron main; bindings ${validated.manifestSha256}` },
     bundle: true,
     define: { "import.meta.url": "__import_meta_url" },
-    external: ["electron", "undici", "ws", ...declaredExternal],
+    external: ["electron", "undici", "ws", "ssh2", ...declaredExternal],
     format: "cjs",
     legalComments: "none",
     logLevel: "silent",
@@ -430,11 +460,12 @@ export async function buildProductionElectronMainIfSupplied({ outputRoot, manife
   const forbiddenInputs = inputs.filter(input => input === "src/app" || input.startsWith("src/app/") || input.startsWith("recovered/source-capsules/") || input.startsWith("dist/deps/"));
   if (forbiddenInputs.length > 0) throw new Error(`Clean production Electron main reaches forbidden first-party artifact inputs: ${forbiddenInputs.join(", ")}`);
   const externalImports = [...new Set(Object.values(result.metafile.outputs).flatMap(output => output.imports.map(item => item.path)))].sort();
-  const allowedPackages = new Set(["electron", "undici", "ws", ...declaredExternal, ...builtins]);
+  const allowedPackages = new Set(["electron", "undici", "ws", "ssh2", ...declaredExternal, ...builtins]);
   const unexpectedExternal = externalImports.filter(specifier => !allowedPackages.has(specifier));
   if (unexpectedExternal.length > 0) throw new Error(`Clean production Electron main has undeclared external imports: ${unexpectedExternal.join(", ")}`);
   const runtimePackages = await materializeElectronMainRuntimePackages(outputRoot);
   if (!externalImports.includes("undici")) throw new Error("Clean production Electron main did not retain the real undici package edge.");
+  if (!externalImports.includes("ssh2")) throw new Error("Clean production Electron main did not retain the real ssh2 package edge.");
   const outputBytes = await readFile(outfile);
   const forbiddenOutput = outputBytes.toString("utf8").match(/(?:src\/app\/|recovered\/source-capsules\/|dist\/electron-main\/main\.cjs)/g) ?? [];
   if (forbiddenOutput.length > 0) throw new Error(`Clean production Electron main embeds forbidden artifact references: ${[...new Set(forbiddenOutput)].join(", ")}`);

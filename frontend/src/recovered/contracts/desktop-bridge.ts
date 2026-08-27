@@ -364,6 +364,14 @@ export interface AgentDesktopBridge {
   getComputerUseModel(): Promise<AgentModelSelection | null>;
   setComputerUseModel(model: AgentModelSelection | null): Promise<AgentModelSelection | null>;
   getAvailableModels(): Promise<unknown>;
+  getSelfHostConnection(): Promise<{ envOverrides: boolean; gatewayUrl: string; hasToken: boolean; dockerInstallUrl: string; defaultGatewayPort: number; defaultSshPort: number }>;
+  setSelfHostConnection(connection: { gatewayUrl?: string; token?: string }): Promise<{ gatewayUrl: string; hasToken: boolean }>;
+  getSelfHostInstallCommand(params: Record<string, unknown>): Promise<{ command: string; token: string }>;
+  installSelfHostBox(params: Record<string, unknown>): Promise<Record<string, unknown>>;
+  testSelfHostGateway(params?: Record<string, unknown>): Promise<{ ok: boolean; message: string }>;
+  pickSelfHostKeyFile(): Promise<string | null>;
+  openSelfHostDocs(): Promise<void>;
+  onSelfHostInstallProgress(listener: BridgeListener<{ line: string }>): Unsubscribe;
   clientPersistence: {
     read(key: string): Promise<string | null>;
     write(key: string, value: string): Promise<void>;

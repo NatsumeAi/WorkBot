@@ -90,6 +90,7 @@ import type { SettingsSectionId } from "../recovered/features/settings/overlay/v
 import type { SettingsComputerMount } from "../recovered/features/settings/overlay/computer";
 import "../recovered/features/settings/overlay/view.css";
 import { WindowChrome } from "../recovered/features/window-chrome/view";
+import { shellSupports } from "../recovered/runtime/shell-capabilities";
 import { createRootShellNavigationState, recordRootShellAgentSelection, resolveAdjacentAgentId, resolveIndexedAgentId, resolveRootShellNavigation, RootShellEmptyWorkspace, RootShellLoading } from "../recovered/features/window-chrome/root-shell-state";
 import { createGlobalKeyboardShortcutController, createRootShellShortcutActions } from "../recovered/features/window-chrome/global-keyboard-shortcuts";
 import { WindowStatusBadge } from "../recovered/features/window-chrome/status-badge";
@@ -2127,7 +2128,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
         // The shipped gate fails open to onboarding when the roster probe is unavailable.
       }
     }
-    const route = resolveOnboardingRoute({ isSignedIn: true, hasSeenOnboarding, agentCount });
+    const route = resolveOnboardingRoute({ isSignedIn: status.kind === "logged-in", hasSeenOnboarding, agentCount });
     if (route === "shell" && !hasSeenOnboarding && agentCount != null && agentCount > 0) {
       await bridge.onboarding.setSeen(true).catch(() => {});
     }
@@ -3346,7 +3347,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
     return commands;
   }, [activeAgent, agentChannelsController, bridge, computerUpdateAction, hiddenAgents.length, openCommandPaletteInfo, openComputerUpdateConfirm, orgChartIsAvailable, themePreference, updatePaletteCommand]);
 
-  const showSignIn = bridge != null && account != null && account.kind !== "logged-in";
+  const showSignIn = false;
   const showRootLoading = bridge != null && account?.kind === "logged-in" && activeAgent == null && transport === "connecting" && !onboardingOpen;
   const showRootEmptyWorkspace = bridge != null && account?.kind === "logged-in" && transport === "connected" && hasLoadedAgents && agents.length === 0 && activeAgent == null && workspaceRoute == null && !onboardingOpen;
   const accessCoverComposition = useMemo(() => projectAccessCoverComposition({
@@ -3432,15 +3433,15 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
         onDismiss={() => settingsNoticeController.reset()}
       />
       <AppAlertHost controller={groupMembersRoot.alert} />
-      {account?.kind === "logged-in" && !computerInfoOpen && !computer.isOpen && computerRebuildBannerInput.kind === "reconnecting" ? <ComputerReconnectBanner
+      {account?.kind === "logged-in" && shellSupports(bridge, "vncComputer") && !computerInfoOpen && !computer.isOpen && computerRebuildBannerInput.kind === "reconnecting" ? <ComputerReconnectBanner
         input={{
           kind: computerRebuildBannerInput.kind,
           stage: computerRebuildBannerInput.stage,
           transport: computerReconnectTransport
         }}
       /> : null}
-      {account?.kind === "logged-in" && !computerInfoOpen && !computer.isOpen && computerRebuildBannerInput.kind !== "reconnecting" ? <ComputerRebuildProgressBanner input={computerRebuildBannerInput} onRestore={restoreComputerProgress} /> : null}
-      {bridge == null ? null : <WindowChrome bridge={bridge} isFullscreen={windowFullscreen} isMaximized={windowMaximized} />}
+      {account?.kind === "logged-in" && shellSupports(bridge, "vncComputer") && !computerInfoOpen && !computer.isOpen && computerRebuildBannerInput.kind !== "reconnecting" ? <ComputerRebuildProgressBanner input={computerRebuildBannerInput} onRestore={restoreComputerProgress} /> : null}
+      {bridge == null || !shellSupports(bridge, "windowChrome") ? null : <WindowChrome bridge={bridge} isFullscreen={windowFullscreen} isMaximized={windowMaximized} />}
       <RootShellLoading isVisible={showRootLoading} />
       <div style={{ display: "grid", gridTemplateColumns: `${renderedSidebarLayout.isCollapsed ? SIDEBAR_LAYOUT_BOUNDS.collapsedWidth : renderedSidebarLayout.expandedWidth}px minmax(0, 1fr)`, height: "100%", minHeight: 0, width: "100%" }}>
         <div style={{ display: "grid", gridTemplateRows: "minmax(0, 1fr) auto auto auto", minHeight: 0 }}>
@@ -3450,7 +3451,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
           </div>
           {hiddenAgents.length > 0 && visibleAgents.length > 0 ? <SandButton aria-haspopup="dialog" onClick={() => setOverlay("hidden-chats")} size="sm" variant="secondary"><span>{UI_TEXT.hiddenBots}</span><SandBadge aria-label={`${hiddenAgents.length} hidden bots`}>{hiddenAgents.length}</SandBadge></SandButton> : null}
           {/* @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#byteOffset=2602084 (s0n Plugins footer button/icon/text composition) */}
-          <div className="sand-agents-sidebar__plugins-entry"><SandButton className="sand-agents-sidebar__plugins" leadingIcon="plug" onClick={() => { setPluginQuery(""); setOverlay("plugins"); }} shape="pill" size="md" variant="secondary">{UI_TEXT.plugins}</SandButton></div>
+          {bridge == null || !shellSupports(bridge, "mcp") ? null : <div className="sand-agents-sidebar__plugins-entry"><SandButton className="sand-agents-sidebar__plugins" leadingIcon="plug" onClick={() => { setPluginQuery(""); setOverlay("plugins"); }} shape="pill" size="md" variant="secondary">{UI_TEXT.plugins}</SandButton></div>}
           <AccountMenu
             account={account}
             accountLabel={UI_TEXT.account}
@@ -3618,8 +3619,8 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
         provider={sharedRoomProvider}
         roomId={sharedRoomContext.roomId}
       /> : null}
-      {bridge == null || activeAgent == null || activeAgent.isGroup || routinesInfoPaneOpen || agentSettingsOpen || channelsInfoPaneOpen ? null : <ComputerInfoPane bridge={bridge} experience={computer} isOpen={computerInfoOpen} onClose={() => setComputerInfoOpen(false)} subjectLabel={activeAgent.name} teachRecording={teachRecordingComposition.preview} />}
-      {activeAgent == null || activeAgent.isGroup || !(computer.isOpen || computerInfoOpen && computerViewerRetained) ? null : <ComputerFullscreen
+      {bridge == null || activeAgent == null || activeAgent.isGroup || routinesInfoPaneOpen || agentSettingsOpen || channelsInfoPaneOpen || !shellSupports(bridge, "vncComputer") ? null : <ComputerInfoPane bridge={bridge} experience={computer} isOpen={computerInfoOpen} onClose={() => setComputerInfoOpen(false)} subjectLabel={activeAgent.name} teachRecording={teachRecordingComposition.preview} />}
+      {bridge == null || !shellSupports(bridge, "vncComputer") || activeAgent == null || activeAgent.isGroup || !(computer.isOpen || computerInfoOpen && computerViewerRetained) ? null : <ComputerFullscreen
         bridge={bridge}
         experience={computer}
         onRequestComposerFocus={() => document.querySelector<HTMLElement>(".sand-prompt-form textarea, .sand-prompt-form [contenteditable='true']")?.focus()}
@@ -3728,7 +3729,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
       />
       <AgentDeleteConfirmation agent={deleteAgent} onClose={() => setDeleteAgent(null)} onConfirm={deleteAgentById} />
       <SidebarSectionDeleteConfirmation section={deleteSection} onClose={() => setDeleteSection(null)} onConfirm={deleteSectionById} />
-      <Suspense fallback={null}><ComputerOverlayRouteView params={{}} /></Suspense>
+      {bridge == null || !shellSupports(bridge, "vncComputer") ? null : <Suspense fallback={null}><ComputerOverlayRouteView params={{}} /></Suspense>}
     </div>
   );
 }

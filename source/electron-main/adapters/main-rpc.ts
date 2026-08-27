@@ -9,6 +9,10 @@ import type { ElectronProductionAdapterBindings } from "../production-adapters.j
 import type { ProductionDisposable, ProductionServiceContext } from "../main-production-services.js";
 import { createElectronProductionIpcMainBinding, type ElectronProductionIpcMainSource } from "./ipc.js";
 import { requireFunction, requireObject } from "./provider-guards.js";
+import { createSelfHostEdgePort } from "../box/self-host-edge.js";
+import { createRequire } from "node:module";
+
+const requireElectron = createRequire(import.meta.url);
 
 type ExistingMainRpcCoreDeps = Pick<MainEdgeWiringDeps,
   "settingsStore"
@@ -99,6 +103,21 @@ export function createElectronProductionMainRpcBinding(
         },
         broadcast: context.broadcast,
         platform: process.platform,
+        selfHost: createSelfHostEdgePort({
+          settingsPath: String(context.settings.settingsStore.settingsPath),
+          restartCoordinator: () => context.boxRecovery.restartCoordinator(),
+          openInSystemBrowser: (url) => context.native.shell.openExternal(url),
+          resourcesPath: typeof Reflect.get(process, "resourcesPath") === "string" ? Reflect.get(process, "resourcesPath") as string : "",
+          showOpenDialog: async (options) => {
+            const electron = requireElectron("electron") as {
+              dialog: { showOpenDialog(window: unknown, opts: unknown): Promise<{ canceled: boolean; filePaths: string[] }> };
+              BrowserWindow: { getFocusedWindow(): unknown; getAllWindows(): unknown[] };
+            };
+            const window = electron.BrowserWindow.getFocusedWindow() ?? electron.BrowserWindow.getAllWindows()[0];
+            return electron.dialog.showOpenDialog(window, options);
+          },
+          onProgress: (line) => context.requireMainEdge().emit("self-host-install", { line }),
+        }),
       };
     },
   });
@@ -215,6 +234,7 @@ function createExistingMainRpcCoreDeps(
     syncHostSettingsToBox,
     broadcast,
     platform,
+    ...(supplied.selfHost === undefined ? {} : { selfHost: supplied.selfHost }),
   };
 }
 

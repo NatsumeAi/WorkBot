@@ -23,5 +23,6 @@ export function mainEdgeTransport(deps: Pick<MainEdgeWiringDeps, "ipcMain" | "ge
 }
 
 export function serveMainEdge(deps: MainEdgeWiringDeps): unknown {
-  return deps.serveEdge(deps.mainRpcContract, deps.mainMethodTable, { transport: mainEdgeTransport(deps), trust: createMainEdgeTrust(), handlers: createMainEdgeServedHandlers(deps) });
+  const handlers = createMainEdgeServedHandlers(deps);
+  return deps.serveEdge(deps.mainRpcContract, deps.mainMethodTable, { transport: mainEdgeTransport(deps), trust: createMainEdgeTrust(), handlers });
 }

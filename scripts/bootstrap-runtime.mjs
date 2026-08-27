@@ -7,7 +7,7 @@ import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { archivedDmg, cachedDmg, cachedRuntimeApp, dmgSha256, dmgUrl } from "./lib/config.mjs";
 import { run } from "./lib/process.mjs";
-import { cacheRuntimeFromApp, hydrateSourcePayloadFromRuntime, validateRuntimeApp } from "./lib/runtime.mjs";
+import { cacheRuntimeFromApp, hydrateSourcePayloadFromAsar, hydrateSourcePayloadFromRuntime, validateRuntimeApp } from "./lib/runtime.mjs";
 import { SYSTEM_TOOLS } from "./lib/system-tools.mjs";
 
 async function exists(target) {
@@ -72,20 +72,29 @@ async function extractRuntime() {
   }
 }
 
+const configuredAsar = process.env.GROK_BOT_018_ASAR?.trim();
 const configuredApp = process.env.GROK_BOT_018_APP?.trim();
-let runtimeApp;
-if (configuredApp) {
-  runtimeApp = await cacheRuntimeFromApp(configuredApp);
-} else if (await exists(cachedRuntimeApp)) {
-  runtimeApp = await validateRuntimeApp(cachedRuntimeApp);
+if (configuredAsar) {
+  const hydrated = await hydrateSourcePayloadFromAsar(path.resolve(configuredAsar));
+  console.log(`Checksum-pinned source payload ready: ${hydrated.destination} (${hydrated.sha256})`);
+  console.log("Electron shell was not cached; set GROK_BOT_018_APP on macOS to attach a runtime .app.");
 } else {
-  await downloadDmg();
-  await extractRuntime();
-  runtimeApp = await validateRuntimeApp(cachedRuntimeApp);
+  let runtimeApp;
+  if (configuredApp) {
+    runtimeApp = await cacheRuntimeFromApp(configuredApp);
+  } else if (await exists(cachedRuntimeApp)) {
+    runtimeApp = await validateRuntimeApp(cachedRuntimeApp);
+  } else if (process.platform !== "darwin") {
+    throw new Error("Missing 0.18.0 app.asar payload. Set GROK_BOT_018_ASAR to a checksum-pinned archive, or run bootstrap on macOS with the pinned DMG.");
+  } else {
+    await downloadDmg();
+    await extractRuntime();
+    runtimeApp = await validateRuntimeApp(cachedRuntimeApp);
+  }
+
+  const hydrated = await hydrateSourcePayloadFromRuntime(runtimeApp);
+
+  console.log(`Runtime ready: ${cachedRuntimeApp}`);
+  console.log(`Checksum-pinned source payload ready: ${hydrated.destination} (${hydrated.sha256})`);
+  console.log("The checksum-pinned app supplies only the Electron shell, ABI-matched native dependencies, and explicitly documented build fallbacks.");
 }
-
-const hydrated = await hydrateSourcePayloadFromRuntime(runtimeApp);
-
-console.log(`Runtime ready: ${cachedRuntimeApp}`);
-console.log(`Checksum-pinned source payload ready: ${hydrated.destination} (${hydrated.sha256})`);
-console.log("The checksum-pinned app supplies only the Electron shell, ABI-matched native dependencies, and explicitly documented build fallbacks.");

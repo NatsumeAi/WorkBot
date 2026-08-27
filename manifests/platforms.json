@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "capabilities": [
+    "conversation",
+    "auth",
+    "inferenceRouter",
+    "secrets",
+    "mcp",
+    "remoteBox",
+    "localDockerVm",
+    "vncComputer",
+    "windowChrome",
+    "webauthnSigner"
+  ],
+  "targets": [
+    {
+      "id": "macos-arm64",
+      "family": "electron-desktop",
+      "status": "implemented",
+      "hostOs": "darwin",
+      "arch": "arm64",
+      "packager": "scripts/package-macos.mjs",
+      "electronShell": "Contents/Frameworks/Electron Framework.framework",
+      "upstreamArtifact": "macos-arm64/Grok_Bot_0.18.0.dmg",
+      "capabilities": {
+        "conversation": "live",
+        "auth": "live",
+        "inferenceRouter": "live",
+        "secrets": "live",
+        "mcp": "live",
+        "remoteBox": "live",
+        "localDockerVm": "live",
+        "vncComputer": "live",
+        "windowChrome": "live",
+        "webauthnSigner": "live"
+      }
+    },
+    {
+      "id": "windows-x64",
+      "family": "electron-desktop",
+      "status": "implemented",
+      "hostOs": "win32",
+      "arch": "x64",
+      "packager": "scripts/package-windows.mjs",
+      "electronShell": "openbot.exe",
+      "upstreamArtifact": "windows-x64/Grok_Bot_0.18.0_Setup.exe",
+      "capabilities": {
+        "conversation": "live",
+        "auth": "live",
+        "inferenceRouter": "live",
+        "secrets": "live",
+        "mcp": "live",
+        "remoteBox": "live",
+        "localDockerVm": "unsupported",
+        "vncComputer": "live",
+        "windowChrome": "live",
+        "webauthnSigner": "live"
+      }
+    },
+    {
+      "id": "linux-x64",
+      "family": "electron-desktop",
+      "status": "implemented",
+      "hostOs": "linux",
+      "arch": "x64",
+      "packager": "scripts/package-linux.mjs",
+      "electronShell": "openbot",
+      "upstreamArtifact": null,
+      "capabilities": {
+        "conversation": "live",
+        "auth": "live",
+        "inferenceRouter": "live",
+        "secrets": "live",
+        "mcp": "live",
+        "remoteBox": "live",
+        "localDockerVm": "live",
+        "vncComputer": "live",
+        "windowChrome": "live",
+        "webauthnSigner": "unsupported"
+      }
+    },
+    {
+      "id": "android",
+      "family": "thin-client",
+      "status": "implemented",
+      "hostOs": "android",
+      "arch": "arm64",
+      "packager": "scripts/package-android.mjs",
+      "electronShell": null,
+      "upstreamArtifact": null,
+      "capabilities": {
+        "conversation": "live",
+        "auth": "live",
+        "inferenceRouter": "live",
+        "secrets": "live",
+        "mcp": "unsupported",
+        "remoteBox": "live",
+        "localDockerVm": "unsupported",
+        "vncComputer": "unsupported",
+        "windowChrome": "unsupported",
+        "webauthnSigner": "unsupported"
+      }
+    }
+  ]
+}

@@ -13,6 +13,7 @@ node_modules/
 # Machine-local harness and inspection scratch.
 /.tmp*/
 /.grok-*/
+/.cursor/rules/baseline-architecture.mdc
 /.playwright-cli/
 /.tmp-*.mjs
 /frontend/.tmp-*/
@@ -30,3 +31,11 @@ node_modules/
 /mermaid.core-*.js
 /xlsx-*.js
 /index.html
+
+# Android web-shell staging and Gradle output.
+/targets/android/www/
+/targets/android/app/build/
+/targets/android/app/src/main/assets/www/desktop-shell.js
+/targets/android/app/src/main/assets/www/desktop-shell.js.map
+/targets/android/.gradle/
+/targets/android/build/

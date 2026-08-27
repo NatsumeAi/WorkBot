@@ -2,11 +2,12 @@ import { DeadlineExceededError } from "../../internal/scheduling.js";
 import {
   GATEWAY_ACCESS_DENIED_MESSAGE_MARKER,
   GATEWAY_NO_STORAGE_MESSAGE_MARKER,
+  GATEWAY_NO_SERVER_MESSAGE_MARKER,
   hasSandBoxBlockedMarker
 } from "../../shared/gateway-reachability.js";
 import { findSystemErrno } from "../../shared/system-errno.js";
 
-export type GatewayReachabilityOutcome = "no_storage" | "box_blocked" | "access_denied" | "refused" | "dns" | "timeout" | "network" | "http_5xx";
+export type GatewayReachabilityOutcome = "no_storage" | "box_blocked" | "access_denied" | "no_server" | "refused" | "dns" | "timeout" | "network" | "http_5xx";
 
 export class SandGatewayUnreachableError extends Error {
   readonly httpStatus?: number;
@@ -76,6 +77,8 @@ export function classifyGatewayFetchFailure(error: unknown): GatewayFetchFailure
   if (hasMarkerInCauseChain(error, (message) => message.includes(GATEWAY_NO_STORAGE_MESSAGE_MARKER))) return { outcome: "no_storage", causeSummary };
   if (hasMarkerInCauseChain(error, hasSandBoxBlockedMarker)) return { outcome: "box_blocked", causeSummary };
   if (hasMarkerInCauseChain(error, (message) => message.includes(GATEWAY_ACCESS_DENIED_MESSAGE_MARKER))) return { outcome: "access_denied", causeSummary };
+  if (hasMarkerInCauseChain(error, (message) => message.includes(GATEWAY_NO_SERVER_MESSAGE_MARKER))) return { outcome: "no_server", causeSummary };
+  if (error instanceof Error && /HTTP 401|HTTP 403/.test(error.message)) return { outcome: "access_denied", causeSummary };
   if (errno === "ECONNREFUSED") return { outcome: "refused", causeSummary };
   if (errno === "ENOTFOUND" || errno === "EAI_AGAIN") return { outcome: "dns", causeSummary };
   if (errno === "ETIMEDOUT" || hasFetchTimeoutSignal(error)) return { outcome: "timeout", causeSummary };

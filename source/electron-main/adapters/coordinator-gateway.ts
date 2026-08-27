@@ -11,6 +11,7 @@ import type {
 import type { ProductionServiceContext } from "../main-production-services.js";
 import type { BoxConnectionInfo } from "../../shared/node/egress-tunnel/box-connection.js";
 import { createSettingsRoutedHostConnector } from "../box/local-docker-host-connector.js";
+import { readSelfHostGateway } from "../box/self-host-credentials.js";
 
 function requireFunction(value: unknown, label: string): asserts value is (...args: never[]) => unknown {
   if (typeof value !== "function") {
@@ -39,6 +40,10 @@ export function createProductionCoordinatorGatewayBinding(): Pick<
       const deps: BrokerDeps = {
         getAccessToken: async ({ backendUrl }) =>
           (await account.getAuthService()).getValidAccessToken({ backendUrl }),
+        peekAccessToken: async () => {
+          try { return await (await account.getAuthService()).peekAccessToken(); }
+          catch { return null; }
+        },
         getMachineId: () => context.machineId,
       };
       const descriptorFastPath = createDesktopGatewayDescriptorFastPath({
@@ -51,6 +56,7 @@ export function createProductionCoordinatorGatewayBinding(): Pick<
         context.env,
         context.requireUpdate(),
         descriptorFastPath,
+        { read: () => readSelfHostGateway(context.settings.settingsStore.settingsPath) },
       ), context.settings.settingsStore) as unknown as {
         connect(): unknown | Promise<unknown>;
         recreate?: (...args: any[]) => unknown;

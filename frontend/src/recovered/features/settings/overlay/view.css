@@ -26,7 +26,12 @@
 .sand-settings-panel > h2 { height: 54px; box-sizing: border-box; margin: 0; padding: 17px 24px; border-bottom: 1px solid var(--cursor-border-secondary, #383838); font-size: 15px; }
 .sand-settings-panel__close { position: absolute; top: 11px; right: 14px; z-index: 1; padding: 4px 9px; color: inherit; background: transparent; border: 0; font-size: 20px; cursor: pointer; }
 .sand-settings-panel__body { height: calc(100% - 54px); box-sizing: border-box; overflow: auto; padding: 24px; }
-.sand-settings-general, .sand-settings-beta-stack, .sand-usage-section, .sand-router-section { display: grid; gap: 24px; }
+.sand-settings-general, .sand-settings-beta-stack, .sand-usage-section, .sand-router-section, .sand-server-section { display: grid; gap: 24px; }
+.sand-server-section section > label { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; padding: 13px; color: inherit; background: var(--cursor-bg-secondary, #292929); border: 1px solid var(--cursor-border-secondary, #393939); border-radius: 9px; }
+.sand-server-section section > label > span { display: grid; flex: 1; min-width: 0; gap: 4px; }
+.sand-server-section input, .sand-server-section textarea { min-width: 0; width: 220px; padding: 6px 9px; color: inherit; background: var(--cursor-button-secondary-background, var(--cursor-bg-secondary, #292929)); border: 1px solid var(--cursor-stroke-tertiary, var(--cursor-border-secondary, #494949)); border-radius: 6px; font: inherit; }
+.sand-server-section textarea { width: 100%; }
+.sand-settings-docs-link { padding: 0; color: var(--cursor-text-secondary, #aaa); background: none; border: 0; font: inherit; text-decoration: underline; cursor: pointer; }
 .sand-settings-general section > label, .sand-auto-review > label { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; padding: 13px; color: inherit; background: var(--cursor-bg-secondary, #292929); border: 1px solid var(--cursor-border-secondary, #393939); border-radius: 9px; }
 .sand-settings-general section > label > span, .sand-auto-review > label > span { display: grid; flex: 1; min-width: 0; gap: 4px; }
 .sand-settings-general section > label small, .sand-auto-review > label small { color: var(--cursor-text-secondary, #aaa); font-size: 11px; }

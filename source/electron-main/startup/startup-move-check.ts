@@ -10,8 +10,8 @@ export interface StartupMoveCheckDependencies {
   readonly env?: NodeJS.ProcessEnv;
   readonly app: {
     readonly isPackaged: boolean;
-    isInApplicationsFolder(): boolean;
-    moveToApplicationsFolder(): boolean;
+    isInApplicationsFolder?(): boolean;
+    moveToApplicationsFolder?(): boolean;
     relaunch(options: { args: readonly string[] }): void;
     exit(code: number): void;
   };

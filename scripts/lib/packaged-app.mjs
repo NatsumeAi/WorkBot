@@ -15,3 +15,26 @@ export function resolvePackagedAppArtifacts(appPath) {
     unpackedPath: `${asarPath}.unpacked`,
   });
 }
+
+export function resolvePackagedArtifacts(targetPath, targetId = "macos-arm64") {
+  if (targetId === "android") {
+    const apkPath = path.resolve(targetPath);
+    return Object.freeze({
+      appPath: apkPath,
+      asarPath: null,
+      unpackedPath: null,
+      artifactKind: "apk",
+    });
+  }
+  if (targetId === "linux-x64" || targetId === "windows-x64") {
+    const appPath = path.resolve(targetPath);
+    const asarPath = path.join(appPath, "resources", "app.asar");
+    return Object.freeze({
+      appPath,
+      asarPath,
+      unpackedPath: `${asarPath}.unpacked`,
+      artifactKind: "electron-dir",
+    });
+  }
+  return resolvePackagedAppArtifacts(targetPath);
+}

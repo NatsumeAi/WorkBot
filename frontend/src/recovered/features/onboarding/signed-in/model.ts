@@ -156,14 +156,13 @@ export function createOnboardingHandOffDwell(clock: OnboardingDwellClock = SYSTE
 
 // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#L20492
 // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#L130486
-// Shipped first-run routing: signed-out users land on sign-in; an existing
-// roster vetoes onboarding and marks the onboarding flag seen.
+// Unsigned users enter the shell. Cursor login is optional.
+// An existing roster vetoes onboarding and marks the onboarding flag seen.
 export function resolveOnboardingRoute(input: {
   isSignedIn: boolean;
   hasSeenOnboarding: boolean;
   agentCount: number | null;
 }): OnboardingRoute {
-  if (!input.isSignedIn) return "sign-in";
   if (input.hasSeenOnboarding || (input.agentCount != null && input.agentCount > 0)) return "shell";
   return "onboarding";
 }

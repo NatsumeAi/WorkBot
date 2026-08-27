@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { DesktopBridge } from "../../../contracts/desktop-bridge";
+import { shellSupports } from "../../../runtime/shell-capabilities";
 import type { TranscriptComputerHandoff } from "../../conversation/workspace/model";
 import type { ProductionCoordinatorClient } from "../../../../production/coordinator-client";
 import {
@@ -241,7 +242,7 @@ export function useComputerExperience(input: {
   }, [activeAgentId, client, fetchAsyncTasks, fetchSubagents]);
 
   const open = useCallback((monitorId: string | null = null, trigger: "preview" | "handoff" = "preview") => {
-    if (activeAgentId == null) return;
+    if (activeAgentId == null || !shellSupports(bridge, "vncComputer")) return;
     bridge?.telemetry.reportOpenComputer({ trigger, hadVncUrl: (monitors.find((monitor) => monitor.subagentId === monitorId)?.vncUrl ?? view.vncUrl) != null, monitorFocused: monitorId != null });
     const openedAt = performance.now();
     setOpenedAtMs((previous) => isOpen ? previous ?? openedAt : openedAt);

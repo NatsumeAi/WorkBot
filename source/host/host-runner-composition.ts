@@ -1,4 +1,4 @@
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { TranscriptMirrorOffloadPool } from "./agent-isolation/transcript-mirror-offload.js";
 import type {
   CreateProductionRunnerRunStep,
@@ -116,6 +116,9 @@ import {
   type ShellTerminalWatchHost,
 } from "./runner/shell-terminal-watch.js";
 import { DEFAULT_SAND_SYSTEM_PROMPT } from "./runner/system-prompt.js";
+import { getSandRootDir } from "./host-paths.js";
+import { SandSettingsStore } from "../shared/node/settings/sand-settings-store.js";
+import { agentTokenLimitFromSettings, compactUnusedFractionFromSettings } from "../shared/inference-endpoints.js";
 import {
   createSystemPromptAssembly,
   type PromptSnapshotStore,
@@ -170,6 +173,26 @@ export const DEFAULT_SAND_MODEL = "gpt-5.5-high-fast";
 export const SAND_SUMMARIZATION_MAX_PROMPT_CHARS = 2_800_000;
 
 type DynamicApi = Record<string, any>;
+
+function apiTurnTokenLimits(): {
+  readonly agentTokenLimit: number;
+  readonly backgroundSummarizationPropsOverride: {
+    readonly unusedPercentTokensThresholdToStartBackgroundSummarization: number;
+    readonly unusedPercentTokensThresholdToPersistBackgroundSummarization: number;
+  };
+} | undefined {
+  const store = new SandSettingsStore(join(getSandRootDir(), "settings.json"));
+  if (store.getInferenceProvider() === "cursor") return undefined;
+  const raw = store.getInferenceEndpoints();
+  const unused = compactUnusedFractionFromSettings(raw);
+  return {
+    agentTokenLimit: agentTokenLimitFromSettings(raw) ?? 200_000,
+    backgroundSummarizationPropsOverride: {
+      unusedPercentTokensThresholdToStartBackgroundSummarization: unused ?? 0.25,
+      unusedPercentTokensThresholdToPersistBackgroundSummarization: Math.max(0.02, (unused ?? 0.25) / 2),
+    },
+  };
+}
 
 export interface HostRunnerSession {
   readonly id: string;
@@ -2512,16 +2535,22 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
             ),
             toolHost: lazyToolHost(),
             turn,
-            staticConfig: {
-              modelId: staticModelId,
-              agentTokenLimit: 200_000,
-              conversationId: session.id,
-              isBoxScopedSubagent: false,
-              isSubagentRunner: false,
-              isSharedRoomRunner: isSharedRoomTurn,
-              sandSendMessageDeliveryOwed: method(experiments, "isSendMessageDeliveryOwedEnabled")?.() ?? false,
-              systemPromptGenerator: () => productionSystemPromptAssembly?.getSystemPrompt() ?? DEFAULT_SAND_SYSTEM_PROMPT,
-            },
+            staticConfig: (() => {
+              const apiLimits = apiTurnTokenLimits();
+              return {
+                modelId: staticModelId,
+                agentTokenLimit: apiLimits?.agentTokenLimit ?? 200_000,
+                conversationId: session.id,
+                isBoxScopedSubagent: false,
+                isSubagentRunner: false,
+                isSharedRoomRunner: isSharedRoomTurn,
+                sandSendMessageDeliveryOwed: method(experiments, "isSendMessageDeliveryOwedEnabled")?.() ?? false,
+                systemPromptGenerator: () => productionSystemPromptAssembly?.getSystemPrompt() ?? DEFAULT_SAND_SYSTEM_PROMPT,
+                ...(apiLimits?.backgroundSummarizationPropsOverride == null
+                  ? {}
+                  : { backgroundSummarizationPropsOverride: apiLimits.backgroundSummarizationPropsOverride }),
+              };
+            })(),
             emitUpdate,
             interactionObservers: {},
             diskPressureReminder: foreverBox.diskPressureReminder,

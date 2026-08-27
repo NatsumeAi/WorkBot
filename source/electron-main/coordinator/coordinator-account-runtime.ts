@@ -1,3 +1,4 @@
+import { cursorAccountSlot } from "../../shared/auth.js";
 import type { CoordinatorRuntime } from "./coordinator-runtime.js";
 
 export interface CoordinatorAuthStatus {
@@ -91,12 +92,6 @@ function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
       { once: true },
     );
   });
-}
-
-function cursorAccountSlot(status: CoordinatorAuthStatus): string | null {
-  if (status.kind !== "logged-in") return null;
-  const slot = status.authId ?? status.email;
-  return slot == null || slot.length === 0 ? null : slot;
 }
 
 /**
@@ -270,7 +265,7 @@ export function createCoordinatorAccountRuntime<Status extends CoordinatorAuthSt
       const blocked = state;
       const version = observedVersion;
       const nextSlot = cursorAccountSlot(settledStatus);
-      if (nextSlot === null || nextSlot !== blocked.slot) {
+      if (nextSlot !== blocked.slot) {
         state = { kind: "inactive" };
         return;
       }
@@ -287,7 +282,7 @@ export function createCoordinatorAccountRuntime<Status extends CoordinatorAuthSt
   }
 
   const applyClaim = async (
-    nextSlot: string | null,
+    nextSlot: string,
     status: Status,
     isStartup: boolean,
     version: number,
@@ -323,14 +318,6 @@ export function createCoordinatorAccountRuntime<Status extends CoordinatorAuthSt
       } catch (error) {
         dependencies.onProblem(`account state reset failed: ${String(error)}`);
       }
-    }
-    if (nextSlot === null) {
-      state = { kind: "inactive" };
-      settle(status);
-      if (!(await stopping) && !isDisposed()) {
-        state = { kind: "blocked", slot: null, previousSlot };
-      }
-      return;
     }
     if (!(await stopping)) {
       if (!isDisposed()) {

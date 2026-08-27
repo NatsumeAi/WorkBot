@@ -136,10 +136,14 @@ export async function buildAsar({
   stageRoot = stagedAppDir,
   archivePath = builtAsar,
   unpackedRoot = builtAsarUnpacked,
+  copyRuntimeNatives = process.platform === "darwin",
 } = {}) {
-  const runtimeApp = await resolveRuntimeApp();
-  const resources = path.join(runtimeApp, "Contents", "Resources");
-  const runtimeUnpacked = path.join(resources, "app.asar.unpacked", "dist");
+  let runtimeApp = null;
+  let runtimeUnpacked = null;
+  if (copyRuntimeNatives) {
+    runtimeApp = await resolveRuntimeApp();
+    runtimeUnpacked = path.join(runtimeApp, "Contents", "Resources", "app.asar.unpacked", "dist");
+  }
 
   await rm(buildRoot, { recursive: true, force: true });
   await mkdir(buildRoot, { recursive: true });
@@ -153,15 +157,22 @@ export async function buildAsar({
     await writeFile(stagedPackagePath, `${JSON.stringify(stagedPackage, null, 2)}\n`);
   }
 
-  for (const directory of ["deps", "native"]) {
-    const source = path.join(runtimeUnpacked, directory);
-    const destination = path.join(stageRoot, "dist", directory);
-    await rm(destination, { recursive: true, force: true });
-    await cp(source, destination, { recursive: true, dereference: false, preserveTimestamps: true });
+  if (runtimeUnpacked != null) {
+    for (const directory of ["deps", "native"]) {
+      const source = path.join(runtimeUnpacked, directory);
+      const destination = path.join(stageRoot, "dist", directory);
+      await rm(destination, { recursive: true, force: true });
+      await cp(source, destination, { recursive: true, dereference: false, preserveTimestamps: true });
+    }
+    await stageElectronRuntimeDependencyResolution(path.join(stageRoot, "dist", "deps"));
   }
-  await stageElectronRuntimeDependencyResolution(path.join(stageRoot, "dist", "deps"));
 
   const mainBundle = path.join(stageRoot, "dist", "electron-main", "main.cjs");
+  try {
+    await stat(mainBundle);
+  } catch {
+    throw new Error("Missing hydrated 0.18.0 payload at src/app/dist/electron-main/main.cjs. Set GROK_BOT_018_ASAR to the checksum-pinned app.asar and run npm run bootstrap.");
+  }
   let mainSource = await readFile(mainBundle, "utf8");
   const dev = process.env.GROK_BOT_BUILD_DEV_APP === "1";
   mainSource = prepareReconstructedElectronMainArtifactFallback(mainSource, { dev });

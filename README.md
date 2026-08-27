@@ -117,12 +117,15 @@ Remote mode remains the default.
 
 ## Requirements
 
-- macOS on Apple Silicon
 - Node.js 26.5.x
-- Xcode Command Line Tools
 - Git LFS
+- **macOS packaging:** Apple Silicon, Xcode Command Line Tools
+- **Android debug APK:** Android SDK / Gradle (optional until you assemble)
 - Docker Desktop (optional, only for the local sandbox)
 - local Claude Code or Codex authentication for those router choices
+
+Linux and Windows Electron installers are planned; the package dispatcher
+already knows those targets. See [docs/PLATFORMS.md](docs/PLATFORMS.md).
 
 ## Quick start
 
@@ -138,19 +141,24 @@ npm run package
 open "dist/Grok Bot 0.18 Reconstructed.app"
 ```
 
-`npm run bootstrap` first uses the Git LFS preservation copy of the pinned
-0.18.0 DMG. If that archive is absent, it falls back to the original public URL;
-`GROK_BOT_018_APP` can also point to an existing application copy. Bootstrap
-verifies both the DMG and `app.asar`, caches the matching Electron runtime, and
-hydrates the ignored `src/app/dist` build input.
+`npm run bootstrap` hydrates the checksum-pinned `src/app/dist` payload. On
+macOS it first uses the Git LFS preservation copy of the pinned 0.18.0 DMG. If
+that archive is absent, it falls back to the original public URL;
+`GROK_BOT_018_APP` can also point to an existing application copy.
+`GROK_BOT_018_ASAR` hydrates the same payload on Linux without `hdiutil`.
+Bootstrap verifies the archive identity before extracting.
 
-`npm run package` compiles the reconstructed runtimes, applies the narrow
-renderer/settings transform, creates the app bundle, assigns the reconstructed
-bundle identity, ad-hoc signs it, and verifies the result. Output is written to:
+`npm run package` dispatches on `GROK_BOT_TARGET` (or the host OS). The macOS
+path compiles reconstructed runtimes, applies the Router settings transform,
+creates the app bundle, ad-hoc signs it, and verifies the result:
 
 ```text
 dist/Grok Bot 0.18 Reconstructed.app
 ```
+
+`GROK_BOT_TARGET=android npm run package` stages the reconstructed frontend
+into the Android WebView shell and assembles a debug APK when the Android SDK
+is present.
 
 Reconstructed packages disable the upstream updater at the packaging boundary
 and default upstream Sentry and telemetry emission off. Explicitly supplied
@@ -159,40 +167,34 @@ environment configuration is still respected.
 ## Architecture
 
 ```text
-polished shipped renderer
+polished shipped renderer / reconstructed frontend
           │
-          │ desktop preload / RPC
+          │ window.desktop + coordinatorPort
           ▼
-     Electron main
+     Electron main + coordinator (on this computer)
           │
-          ├── settings, secrets, auth and plugin lifecycle
-          ├── remote box connector
-          └── owned local Docker connector
-                       │
-                       ▼
-              coordinator + host
-                       │
-              inference router
-           ┌───────────┼───────────┐
-        Cursor      Claude       Codex / OpenRouter
-                       │
-                 Grok Bot MCP tools
+          │ HTTP POST /api/*  +  SSE /events  +  token
+          ▼
+     Linux box gateway
+          │
+     host + box-exec-daemon
 ```
 
 The main source areas are:
 
 - `source/electron-main/` — desktop lifecycle, settings, auth, box connectors,
   coordinator ownership, and RPC handlers;
-- `source/electron-preload/` — the narrow trusted bridge exposed to the UI;
-- `source/host/` — inference, tools, MCP, settings, and turn execution;
-- `source/node-agent-coordinator/` — transcript routing, streaming activity,
-  reactions, and the routed MCP bridge;
+- `source/electron-preload/` — the trusted bridge exposed to the UI;
+- `source/client-runtime/` — optional DesktopBridge factory used by preload;
+- `source/host/` — inference, tools, MCP, settings, and turn execution (on the box);
+- `source/node-agent-coordinator/` — transcript routing and gateway client (on the desktop);
 - `source/shared/` — shared contracts, settings, protocol, and provider helpers;
 - `frontend/` — readable React/TypeScript renderer reconstruction and design
   workspace;
+- `targets/android/` — WebView shell stub (must talk to the box gateway, not a desktop);
 - `scripts/` — bootstrap, compilation, renderer patching, packaging, signing,
   and verification; and
-- `tests/` — publication and router regressions.
+- `tests/` — publication, isomorphism, and router regressions.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for more detail.
 
@@ -203,7 +205,7 @@ npm test                  # focused regression tests
 npm run typecheck         # renderer TypeScript
 npm run source:typecheck  # runtime TypeScript
 npm run frontend:build    # build the readable renderer reconstruction
-npm run package           # build, sign, and verify the macOS app
+npm run package           # dispatch packager for GROK_BOT_TARGET / host OS
 npm run verify            # verify an existing packaged app
 npm run smoke             # bounded native smoke check
 npm run publication:check # prove a fresh-history export is lossless

@@ -1,0 +1,8 @@
+{
+  "appId": "com.grokbot.reconstructed",
+  "appName": "Grok Bot",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}

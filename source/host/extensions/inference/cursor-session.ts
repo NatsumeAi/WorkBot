@@ -112,7 +112,7 @@ export function createCursorSandInference(options: CursorSandInferenceOptions): 
         return { getExecutor: () => createMockPromptExecutor(() => ({ response: mockResponse, chunkSize: 8 })), getModelId: () => modelId };
       }
       const routedProvider = new SandSettingsStore(join(getSandRootDir(), "settings.json")).getInferenceProvider();
-      if (routedProvider !== "cursor") return createProviderPromptSession(routedProvider) as unknown as CursorPromptSession;
+      if (routedProvider !== "cursor") return createProviderPromptSession(routedProvider, sessionOptions?.isSummarizationSession === true ? "compact" : "chat") as unknown as CursorPromptSession;
       const experimentState = options.getModelExperimentState?.(), requestSource = sessionOptions?.requestSource;
       const experimentModelOverride = selectSandExperimentTurnModel({ ...(experimentState === undefined ? {} : { state: experimentState }), ...(requestSource === undefined ? {} : { requestSource }), readConfiguredDefaultModel: () => options.getConfiguredDefaultModel?.(), readConfiguredAutomationsModel: () => options.getConfiguredAutomationsModel?.() });
       const storedDefaultModel = options.getDefaultModel?.(), storedComputerUseModel = options.getComputerUseModel?.(), storedBrowserUseModel = options.getBrowserUseModel?.();
