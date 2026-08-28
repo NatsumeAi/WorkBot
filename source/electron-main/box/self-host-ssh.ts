@@ -37,6 +37,7 @@ export interface SelfHostSshTarget {
 
 export interface SelfHostExecOptions {
   readonly onOutput?: (chunk: string) => void;
+  readonly timeoutMs?: number;
 }
 
 export interface SelfHostSshSession {
@@ -139,6 +140,21 @@ function sessionFromClient(client: SshClient): SelfHostSshSession {
       if (error) { reject(error); return; }
       let stdout = "";
       let stderr = "";
+      let settled = false;
+      const timer = options?.timeoutMs != null && options.timeoutMs > 0
+        ? setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          try { stream.close(); } catch { /* already closed */ }
+          reject(new Error("That step timed out. Docker pull may be stuck; run it on the server, then Install again."));
+        }, options.timeoutMs)
+        : null;
+      const finish = (code: number | null): void => {
+        if (settled) return;
+        settled = true;
+        if (timer != null) clearTimeout(timer);
+        resolve({ code, stdout, stderr });
+      };
       const take = (chunk: Buffer, which: "stdout" | "stderr"): void => {
         const text = chunk.toString();
         if (which === "stdout") {
@@ -152,7 +168,7 @@ function sessionFromClient(client: SshClient): SelfHostSshSession {
       };
       stream.on("data", (chunk: Buffer) => { take(chunk, "stdout"); });
       stream.stderr?.on("data", (chunk: Buffer) => { take(chunk, "stderr"); });
-      stream.on("close", (code: number | null) => resolve({ code, stdout, stderr }));
+      stream.on("close", (code: number | null) => finish(code));
     });
   });
   return {

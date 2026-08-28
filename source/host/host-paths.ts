@@ -2,7 +2,7 @@ import { lstat, readlink, rm, symlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
-import { getSandVariant } from "../shared/node/sand-variant.js";
+import { isSandLabBuild } from "../shared/node/sand-variant.js";
 import { isPathWithin } from "../shared/node/paths.js";
 import { findSystemErrno } from "../shared/system-errno.js";
 
@@ -14,7 +14,8 @@ export const OPENBOT_USER_DATA_DIR_ENV = "OPENBOT_USER_DATA_DIR";
 export const SAND_DATA_DIRNAME = "openbot-data";
 export const USER_DATA_DIR_FLAG = "--user-data-dir";
 export const SAND_BOX_HOME_DIR = "/home/box";
-export const SAND_BOX_DATA_ROOT = `${SAND_BOX_HOME_DIR}/${SAND_DATA_DIRNAME}`;
+/** Official image supervisor always uses this in-box path. Isolation is the Docker volume name, not a second directory. */
+export const SAND_BOX_DATA_ROOT = `${SAND_BOX_HOME_DIR}/sand-data`;
 export const SAND_BOX_MODEL_VISIBLE_DATA_ROOT = `${SAND_BOX_HOME_DIR}/agent-data`;
 
 export function toModelVisiblePath(path: string): string {
@@ -70,8 +71,8 @@ export function getSandRootDir(homeDir = homedir()): string {
   if (override != null) return override;
   const userDataDir = resolveSandUserDataDir([], process.env);
   if (userDataDir != null) return join(userDataDir, SAND_DATA_DIRNAME);
-  const variant = getSandVariant();
-  return variant === "sand" ? getSandProductionRootDir(homeDir) : join(homeDir, ".cursor", variant);
+  if (isSandLabBuild()) return join(homeDir, ".cursor", "sand-lab");
+  return getSandProductionRootDir(homeDir);
 }
 
 export function reanchorSandPath(storedPath: string): string {

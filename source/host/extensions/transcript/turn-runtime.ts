@@ -173,10 +173,19 @@ export interface TurnOptions extends Record<string, unknown> {
   readonly ackToken?: string;
 }
 
+export function countSendMessageEntries(
+  entries: readonly { readonly kind?: string }[],
+): number {
+  let count = 0;
+  for (const entry of entries) if (entry.kind === "send-message") count += 1;
+  return count;
+}
+
 export function isDeliveryOwed(
   result: Pick<TurnResult, "sentMessageCount" | "reacted">,
+  sendMessageDelta = 0,
 ): boolean {
-  return result.sentMessageCount === 0 && !result.reacted;
+  return result.sentMessageCount === 0 && !result.reacted && sendMessageDelta <= 0;
 }
 
 export function classifyAgentError(error: unknown): Record<string, unknown> {
@@ -423,6 +432,9 @@ export class TurnRuntime {
       try {
         const unansweredPrompts =
           this.tm.widgetResponses.collectUnansweredQuestionPrompts(session);
+        const sendMessageBefore = countSendMessageEntries(
+          session.db.getTranscriptEntries(),
+        );
         const result = await runner.run(prompt, {
           ...options,
           ...unansweredPrompts,
@@ -447,6 +459,7 @@ export class TurnRuntime {
             turnCtx,
             turnTrace,
             turn,
+            sendMessageBefore,
           );
           settledResult = settled.result;
           if (
@@ -540,18 +553,22 @@ export class TurnRuntime {
     traceCtx: unknown,
     turnTrace: HostTrace | undefined,
     turn?: Record<string, any>,
+    sendMessageBefore = 0,
   ): Promise<{
     result: TurnResult;
     replyNudgeAttempts: number;
     deliveryOwed: boolean;
     streamOutputProduced: boolean;
   }> {
+    const sendMessageDelta = () =>
+      countSendMessageEntries(session.db.getTranscriptEntries()) - sendMessageBefore;
+    const owed = (next: TurnResult) => isDeliveryOwed(next, sendMessageDelta());
     let latest = result;
     let attempts = 0;
-    let delivered = !isDeliveryOwed(result);
+    let delivered = !owed(result);
     let streamOutputProduced = result.streamOutputProduced === true;
     while (
-      isDeliveryOwed(latest) &&
+      owed(latest) &&
       attempts < MAX_REPLY_NUDGES &&
       epoch === this.tm.sendPipeline.currentTurnEpoch(session)
     ) {
@@ -562,11 +579,12 @@ export class TurnRuntime {
         traceCtx,
         onModelResolved: (id: string) => turn?.setModel(id),
       });
-      delivered ||= !isDeliveryOwed(latest);
+      delivered ||= !owed(latest);
       streamOutputProduced ||= latest.streamOutputProduced === true;
       if (latest.aborted) break;
     }
     if (
+      !delivered &&
       latest.endedOnSilentToolCalls === true &&
       !latest.aborted &&
       latest.awaitingUserSelection !== true &&
@@ -582,7 +600,7 @@ export class TurnRuntime {
           onModelResolved: (id: string) => turn?.setModel(id),
         });
         latest = nudged;
-        delivered ||= !isDeliveryOwed(nudged);
+        delivered ||= !owed(nudged);
         streamOutputProduced ||= nudged.streamOutputProduced === true;
       } finally {
         this.tm.telemetry.reportClosingSendNudge({

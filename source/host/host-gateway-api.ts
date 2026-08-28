@@ -306,10 +306,10 @@ export function createHostGatewayApi(
       await method(sharing, "noteAgentDeleted")(args.id);
       const result = await method(manager, "deleteAgent")(args.id);
       method(deps.extensions.api("session"), "forgetHandoff")(args.id);
-      await method(automations, "deleteAgentSchedules")(args.id).catch(
+      void method(automations, "deleteAgentSchedules")(args.id).catch(
         () => undefined
       );
-      await deps.releaseAgentBox(args.id);
+      void deps.releaseAgentBox(args.id);
       deps.hostEvents.emit({
         kind: "notification-agent-forgotten",
         agentId: args.id
@@ -324,10 +324,10 @@ export function createHostGatewayApi(
       const result = await method(manager, "deleteAgents")(args.ids);
       for (const id of args.ids) {
         method(deps.extensions.api("session"), "forgetHandoff")(id);
-        await method(automations, "deleteAgentSchedules")(id).catch(
+        void method(automations, "deleteAgentSchedules")(id).catch(
           () => undefined
         );
-        await deps.releaseAgentBox(id);
+        void deps.releaseAgentBox(id);
         deps.hostEvents.emit({
           kind: "notification-agent-forgotten",
           agentId: id

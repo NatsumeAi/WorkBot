@@ -364,8 +364,15 @@ export interface AgentDesktopBridge {
   getComputerUseModel(): Promise<AgentModelSelection | null>;
   setComputerUseModel(model: AgentModelSelection | null): Promise<AgentModelSelection | null>;
   getAvailableModels(): Promise<unknown>;
-  getSelfHostConnection(): Promise<{ envOverrides: boolean; gatewayUrl: string; hasToken: boolean; dockerInstallUrl: string; defaultGatewayPort: number; defaultSshPort: number }>;
-  setSelfHostConnection(connection: { gatewayUrl?: string; token?: string }): Promise<{ gatewayUrl: string; hasToken: boolean }>;
+  getInferenceRouter(): Promise<{ provider: string; usage?: { providers?: Record<string, { requests: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; lastUsedAt: string | null }> }; local?: unknown; endpoints?: unknown }>;
+  setInferenceRouter(provider: string): Promise<{ provider: string; usage?: unknown; local?: unknown }>;
+  setInferenceEndpoints(document: unknown): Promise<{ ok?: boolean; message?: string; provider?: string; endpoints?: unknown }>;
+  getOutboundProxy(): Promise<{ mode: string; customUrl: string; usingProxy: boolean }>;
+  setOutboundProxy(settings: { mode: string; customUrl: string }): Promise<{ mode: string; customUrl: string; usingProxy: boolean }>;
+  getBoxRuntime(): Promise<{ mode: string; status?: { detail?: string } }>;
+  setBoxRuntime(mode: string): Promise<{ mode: string; status?: { detail?: string } }>;
+  getSelfHostConnection(): Promise<{ envOverrides: boolean; gatewayUrl: string; hasToken: boolean; host: string; username: string; sshPort: number; gatewayPort: number; status: "missing" | "saved" | "connected"; statusMessage: string; dockerInstallUrl: string; defaultGatewayPort: number; defaultSshPort: number }>;
+  setSelfHostConnection(connection: { gatewayUrl?: string; token?: string; host?: string; username?: string; port?: number; sshPort?: number; gatewayPort?: number; clear?: boolean }): Promise<{ gatewayUrl: string; hasToken: boolean; status?: string; statusMessage?: string; message?: string }>;
   getSelfHostInstallCommand(params: Record<string, unknown>): Promise<{ command: string; token: string }>;
   installSelfHostBox(params: Record<string, unknown>): Promise<Record<string, unknown>>;
   testSelfHostGateway(params?: Record<string, unknown>): Promise<{ ok: boolean; message: string }>;

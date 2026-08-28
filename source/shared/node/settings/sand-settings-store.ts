@@ -9,8 +9,9 @@ import { DEFAULT_SAND_AUTO_REVIEW_INSTRUCTIONS, normalizeSandAutoReviewInstructi
 import { SidebarSections, type SidebarSection } from "../../sidebar-sections.js";
 import { coerceToEnabledTrack, isSandUpdateTrack, type SandUpdateTrack } from "../../update-track.js";
 import { isSandAgentModelSelection, type SandAgentModelSelection } from "../../agents/sand-agent-model.js";
-import { emptySandInferenceRouterUsage, isSandInferenceProvider, type SandInferenceProvider, type SandInferenceRouterUsage } from "../../inference-router.js";
+import { emptySandInferenceRouterUsage, isSandInferenceProvider, resolveSandInferenceProvider, type SandInferenceProvider, type SandInferenceRouterUsage } from "../../inference-router.js";
 import { parseInferenceEndpointsDocument, type InferenceEndpointsDocument } from "../../inference-endpoints.js";
+import { isSandOutboundProxyMode, type SandOutboundProxyMode } from "../../outbound-proxy.js";
 import { DEFAULT_SAND_BOX_RUNTIME, isSandBoxRuntime, type SandBoxRuntime } from "../../box-runtime.js";
 
 export const SETTINGS_VERSION = 1;
@@ -28,6 +29,7 @@ export interface SandStoredSettings {
   userTimeZone?: string; userTimeZoneOverride?: string; autoReviewInstructions?: SandAutoReviewInstructions;
   localToolPermission?: SandLocalToolPermission; localToolPermissionCeiling?: SandLocalToolPermission;
   inferenceProvider?: SandInferenceProvider; inferenceRouterUsage?: SandInferenceRouterUsage; inferenceEndpoints?: InferenceEndpointsDocument;
+  outboundProxyMode?: SandOutboundProxyMode; outboundProxyUrl?: string;
   boxRuntime?: SandBoxRuntime;
   mcpCustomInstructionsAccountScope?: string; pinnedAgentIds?: string[]; sidebarSections?: SidebarSection[];
 }
@@ -71,6 +73,8 @@ function parseSettings(value: unknown): SandStoredSettings | null {
   if (isSandLocalToolPermission(raw.localToolPermission)) result.localToolPermission = raw.localToolPermission;
   if (isSandLocalToolPermission(raw.localToolPermissionCeiling)) result.localToolPermissionCeiling = raw.localToolPermissionCeiling;
   if (isSandInferenceProvider(raw.inferenceProvider)) result.inferenceProvider = raw.inferenceProvider;
+  if (isSandOutboundProxyMode(raw.outboundProxyMode)) result.outboundProxyMode = raw.outboundProxyMode;
+  if (typeof raw.outboundProxyUrl === "string") result.outboundProxyUrl = raw.outboundProxyUrl.trim();
   {
     const endpoints = parseInferenceEndpointsDocument(raw.inferenceEndpoints);
     if (endpoints != null) result.inferenceEndpoints = endpoints;
@@ -160,10 +164,27 @@ export class SandSettingsStore {
   getLocalToolPermissionChoice(): SandLocalToolPermission { return this.load().localToolPermission ?? SAND_DEFAULT_LOCAL_TOOL_PERMISSION; }
   getLocalToolPermissionCeiling(): SandLocalToolPermission | undefined { return this.load().localToolPermissionCeiling; }
   setLocalToolPermission(value: SandLocalToolPermission): void { this.update((s) => ({ ...s, localToolPermission: value })); }
-  getInferenceProvider(): SandInferenceProvider { return this.load().inferenceProvider ?? "cursor"; }
-  setInferenceProvider(value: SandInferenceProvider): void { this.update((s) => ({ ...s, inferenceProvider: value })); }
+  getInferenceProvider(): SandInferenceProvider {
+    const loaded = this.load();
+    const provider = resolveSandInferenceProvider(loaded.inferenceProvider, loaded.inferenceEndpoints);
+    if (loaded.inferenceProvider !== provider) this.persist({ ...loaded, inferenceProvider: provider });
+    return provider;
+  }
+  setInferenceProvider(value: SandInferenceProvider): void {
+    this.update((s) => ({ ...s, inferenceProvider: resolveSandInferenceProvider(value, s.inferenceEndpoints) }));
+  }
   getInferenceEndpoints(): InferenceEndpointsDocument | undefined { return this.load().inferenceEndpoints; }
-  setInferenceEndpoints(value: InferenceEndpointsDocument): void { this.update((s) => ({ ...s, inferenceEndpoints: value })); }
+  setInferenceEndpoints(value: InferenceEndpointsDocument): void {
+    this.update((s) => ({
+      ...s,
+      inferenceEndpoints: value,
+      inferenceProvider: resolveSandInferenceProvider(s.inferenceProvider, value),
+    }));
+  }
+  getOutboundProxyMode(): SandOutboundProxyMode { return this.load().outboundProxyMode ?? "off"; }
+  setOutboundProxyMode(value: SandOutboundProxyMode): void { this.update((s) => ({ ...s, outboundProxyMode: value })); }
+  getOutboundProxyUrl(): string { return this.load().outboundProxyUrl ?? ""; }
+  setOutboundProxyUrl(value: string): void { this.update((s) => { const trimmed = value.trim(); const { outboundProxyUrl: _old, ...rest } = s; return trimmed.length === 0 ? rest : { ...rest, outboundProxyUrl: trimmed }; }); }
   getInferenceRouterUsage(): SandInferenceRouterUsage { return this.load().inferenceRouterUsage ?? emptySandInferenceRouterUsage(); }
   recordInferenceUsage(provider: SandInferenceProvider, usage: { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number }): void {
     const safe = (value: number | undefined): number => Number.isFinite(value) && value! >= 0 ? Math.round(value!) : 0;

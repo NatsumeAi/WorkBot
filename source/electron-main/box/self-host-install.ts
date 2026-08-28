@@ -177,12 +177,26 @@ export async function installSelfHostBox(args: {
     const remoteScript = `${remoteRoot}/install.sh`;
     await session.putFile(scriptLocal, remoteScript);
     const live = throttleProgress(progress);
-    const ran = await session.exec(`sh ${remoteScript}`, {
-      onOutput: (chunk) => {
-        const line = selfHostVisibleProgressLine(chunk);
-        if (line != null) live.push(line);
-      },
-    });
+    let lastBeat = Date.now();
+    const beat = setInterval(() => {
+      if (Date.now() - lastBeat < 8_000) return;
+      live.push("Still working… Docker pull can take several minutes.");
+    }, 8_000);
+    let ran;
+    try {
+      ran = await session.exec(`sh ${remoteScript}`, {
+        timeoutMs: 12 * 60_000,
+        onOutput: (chunk) => {
+          const line = selfHostVisibleProgressLine(chunk);
+          if (line != null) {
+            lastBeat = Date.now();
+            live.push(line);
+          }
+        },
+      });
+    } finally {
+      clearInterval(beat);
+    }
     live.flush();
     const output = `${ran.stdout}\n${ran.stderr}`;
     if (output.includes("docker is not installed") || /command not found.*docker|docker: not found/i.test(output)) {
@@ -197,7 +211,14 @@ export async function installSelfHostBox(args: {
     }
     const gatewayPort = request.gatewayPort > 0 ? request.gatewayPort : SELF_HOST_DEFAULT_GATEWAY_PORT;
     const gatewayUrl = (request.accessUrl?.trim() || defaultAccessUrl(request.host, gatewayPort, remoteCert != null && remoteKey != null)).replace(/\/$/, "");
-    await writeSelfHostGateway(args.settingsPath, { gatewayUrl, token });
+    await writeSelfHostGateway(args.settingsPath, {
+      gatewayUrl,
+      token,
+      host: request.host,
+      username: request.username,
+      sshPort: request.port,
+      gatewayPort,
+    });
     progress("Saved.");
     return { status: "ok", gatewayUrl, token, lines: ["Installed.", `Saved ${gatewayUrl}`] };
   } catch (error) {

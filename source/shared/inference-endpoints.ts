@@ -1,9 +1,10 @@
 import { validateBoxSecretKey } from "./box-secrets.js";
 
 export const INFERENCE_ENDPOINTS_SCHEMA_VERSION = 1;
-export const MAX_INFERENCE_ENDPOINTS = 32;
+export const MAX_INFERENCE_ENDPOINTS = 256;
+export const MAX_INFERENCE_KEYS = 32;
 export const MAX_INFERENCE_ENDPOINT_HEADERS = 16;
-export const MAX_INFERENCE_JSON_CHARS = 32 * 1024;
+export const MAX_INFERENCE_JSON_CHARS = 256 * 1024;
 export const DEFAULT_COMPACT_AT = 0.75;
 export const DEFAULT_REASONING_EFFORT = "medium";
 export const MAX_FALLBACK_ENDPOINTS = 8;
@@ -15,13 +16,14 @@ const FORBIDDEN_VALUE_KEYS = new Set([
 
 export type InferenceEndpointKind = "openai-compatible";
 export type InferenceReasoningEffort = "off" | "low" | "medium" | "high" | "xhigh" | "max";
-export type InferenceEndpointRole = "chat" | "compact" | "fallback";
+export type InferenceEndpointRole = "chat" | "compact" | "fallback" | "image";
 
 export interface InferenceEndpointRoles {
   readonly chat: string;
   readonly compact?: string;
   readonly fallback?: string;
   readonly fallbacks?: readonly string[];
+  readonly image?: string;
 }
 
 export interface InferenceEndpointSticky {
@@ -47,9 +49,15 @@ export interface InferenceEndpoint {
   readonly compactAt?: number;
 }
 
+export interface InferenceKey {
+  readonly id: string;
+  readonly label: string;
+}
+
 export interface InferenceEndpointsDocument {
   readonly schemaVersion: 1;
   readonly active: string;
+  readonly keys?: readonly InferenceKey[];
   readonly roles?: InferenceEndpointRoles;
   readonly sticky?: InferenceEndpointSticky;
   readonly endpoints: readonly InferenceEndpoint[];
@@ -89,6 +97,8 @@ export const INFERENCE_PROVIDER_CATALOG: readonly InferenceProviderCatalog[] = [
       { id: "gpt-5.6-sol", label: "GPT-5.6 Sol", contextWindow: 1_050_000, maxOutputTokens: 128_000 },
       { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", contextWindow: 1_050_000, maxOutputTokens: 128_000 },
       { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", contextWindow: 1_050_000, maxOutputTokens: 128_000 },
+      { id: "dall-e-3", label: "DALL·E 3 (image)", contextWindow: 4_000, maxOutputTokens: 1 },
+      { id: "gpt-image-1", label: "GPT Image 1 (image)", contextWindow: 4_000, maxOutputTokens: 1 },
     ],
   },
   {
@@ -103,6 +113,8 @@ export const INFERENCE_PROVIDER_CATALOG: readonly InferenceProviderCatalog[] = [
       { id: "google/gemini-3.7-flash", label: "Gemini 3.7 Flash", contextWindow: 1_048_576, maxOutputTokens: 65_536 },
       { id: "x-ai/grok-4.6", label: "Grok 4.6", contextWindow: 500_000, maxOutputTokens: 128_000 },
       { id: "deepseek/deepseek-v4-pro", label: "DeepSeek V4 Pro", contextWindow: 1_000_000, maxOutputTokens: 128_000 },
+      { id: "openai/dall-e-3", label: "DALL·E 3 (image)", contextWindow: 4_000, maxOutputTokens: 1 },
+      { id: "openai/gpt-image-1", label: "GPT Image 1 (image)", contextWindow: 4_000, maxOutputTokens: 1 },
     ],
   },
   {
@@ -226,7 +238,34 @@ export const INFERENCE_ENDPOINT_PRESETS: readonly InferenceEndpointPreset[] = IN
 }));
 
 export function emptyInferenceEndpointsDocument(): InferenceEndpointsDocument {
-  return documentFromPreset("openrouter");
+  return documentFromPreset("custom");
+}
+
+export function nextInferenceKeyId(existing: readonly { readonly id: string }[]): string {
+  const taken = new Set(existing.map((item) => item.id));
+  let n = 1;
+  while (taken.has(`KEY_${n}`)) n += 1;
+  return `KEY_${n}`;
+}
+
+function parseKeys(value: unknown, endpointSecrets: readonly string[]): InferenceKey[] {
+  const keys: InferenceKey[] = [];
+  const seen = new Set<string>();
+  const push = (id: string, label: string) => {
+    if (seen.has(id) || validateBoxSecretKey(id) != null || keys.length >= MAX_INFERENCE_KEYS) return;
+    seen.add(id);
+    keys.push({ id, label: label.trim().length > 0 ? label.trim() : id });
+  };
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (!isRecord(item) || hasForbiddenValueKey(item)) continue;
+      const id = optionalString(item.id, 64);
+      if (id == null) continue;
+      push(id, optionalString(item.label, 64) ?? id);
+    }
+  }
+  for (const id of endpointSecrets) push(id, id);
+  return keys;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -316,6 +355,21 @@ function parseEndpoint(value: unknown): InferenceEndpoint | undefined {
   };
 }
 
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
+
+/** When host-main runs inside the official box image, 127.0.0.1 is the container, not the Linux host. */
+export function rewriteLoopbackBaseUrlForBoxHost(baseURL: string, rewrite = process.env.SAND_REWRITE_LOOPBACK_TO_DOCKER_HOST === "1"): string {
+  if (!rewrite) return baseURL;
+  try {
+    const url = new URL(baseURL);
+    if (!LOOPBACK_HOSTS.has(url.hostname)) return baseURL;
+    url.hostname = "host.docker.internal";
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return baseURL;
+  }
+}
+
 export function parseInferenceEndpointsDocument(value: unknown): InferenceEndpointsDocument | undefined {
   if (typeof value === "string") {
     const trimmed = value.trim();
@@ -339,7 +393,8 @@ export function parseInferenceEndpointsDocument(value: unknown): InferenceEndpoi
   const resolved = active != null && seen.has(active) ? active : endpoints[0]!.id;
   const roles = parseRoles(value.roles, seen, resolved);
   const sticky = parseSticky(value.sticky, seen);
-  return { schemaVersion: 1, active: resolved, ...(roles == null ? {} : { roles }), ...(sticky == null ? {} : { sticky }), endpoints };
+  const keys = parseKeys(value.keys, endpoints.map((endpoint) => endpoint.apiKeySecret));
+  return { schemaVersion: 1, active: resolved, ...(keys.length > 0 ? { keys } : {}), ...(roles == null ? {} : { roles }), ...(sticky == null ? {} : { sticky }), endpoints };
 }
 
 function parseSticky(value: unknown, seen: Set<string>): InferenceEndpointSticky | undefined {
@@ -375,12 +430,14 @@ function parseRoles(value: unknown, seen: Set<string>, active: string): Inferenc
     fallbackIds.push(id);
     if (fallbackIds.length >= MAX_FALLBACK_ENDPOINTS) break;
   }
+  const image = optionalString(value.image, 48);
   const next: InferenceEndpointRoles = {
     chat: chatId,
     ...(compact != null && seen.has(compact) && compact !== chatId ? { compact } : {}),
     ...(fallbackIds.length > 0 ? { fallback: fallbackIds[0], fallbacks: fallbackIds } : {}),
+    ...(image != null && seen.has(image) ? { image } : {}),
   };
-  if (next.compact == null && next.fallbacks == null && next.chat === active) return undefined;
+  if (next.compact == null && next.fallbacks == null && next.image == null && next.chat === active) return undefined;
   return next;
 }
 
@@ -411,6 +468,7 @@ export function publicInferenceEndpointsDocument(document: InferenceEndpointsDoc
   return {
     schemaVersion: 1,
     active: document.active,
+    ...(document.keys == null || document.keys.length === 0 ? {} : { keys: document.keys.map((key) => ({ id: key.id, label: key.label })) }),
     ...(document.roles == null ? {} : { roles: { ...document.roles } }),
     ...(document.sticky == null ? {} : { sticky: { ...document.sticky, ...(document.sticky.failures == null ? {} : { failures: { ...document.sticky.failures } }) } }),
     endpoints: document.endpoints.map(publicEndpoint),
@@ -427,12 +485,21 @@ export function inferenceEndpointRoles(document: InferenceEndpointsDocument): In
     chat: document.roles?.chat ?? document.active,
     ...(document.roles?.compact == null ? {} : { compact: document.roles.compact }),
     ...(fallbacks.length > 0 ? { fallback: fallbacks[0], fallbacks } : {}),
+    ...(document.roles?.image == null ? {} : { image: document.roles.image }),
   };
+}
+
+/** Image generation never falls back to the chat LLM. Unassigned means no image model. */
+export function imageGenerationEndpoint(document: InferenceEndpointsDocument): InferenceEndpoint | undefined {
+  const id = document.roles?.image;
+  if (id == null) return undefined;
+  return document.endpoints.find((endpoint) => endpoint.id === id);
 }
 
 export function endpointForRole(document: InferenceEndpointsDocument, role: InferenceEndpointRole): InferenceEndpoint {
   const roles = inferenceEndpointRoles(document);
-  const id = role === "chat" ? roles.chat : role === "compact" ? roles.compact ?? roles.chat : roles.fallbacks?.[0] ?? roles.fallback ?? roles.chat;
+  const id = role === "chat" ? roles.chat : role === "compact" ? roles.compact ?? roles.chat : role === "image" ? roles.image : roles.fallbacks?.[0] ?? roles.fallback ?? roles.chat;
+  if (id == null) return activeInferenceEndpoint(document);
   return document.endpoints.find((endpoint) => endpoint.id === id) ?? activeInferenceEndpoint(document);
 }
 
@@ -505,7 +572,7 @@ export function inferenceEndpointSecretNames(document: InferenceEndpointsDocumen
 }
 
 export function documentFromPreset(id: string): InferenceEndpointsDocument {
-  const provider = INFERENCE_PROVIDER_CATALOG.find((item) => item.id === id) ?? INFERENCE_PROVIDER_CATALOG.find((item) => item.id === "openrouter")!;
+  const provider = INFERENCE_PROVIDER_CATALOG.find((item) => item.id === id) ?? INFERENCE_PROVIDER_CATALOG.find((item) => item.id === "custom")!;
   const endpoint = endpointFromCatalog(provider);
   return { schemaVersion: 1, active: endpoint.id, endpoints: [endpoint] };
 }

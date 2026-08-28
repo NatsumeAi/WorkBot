@@ -21,11 +21,15 @@ import {
   endpointForRole,
   parseInferenceEndpointsDocument,
   retryEndpointChain,
+  rewriteLoopbackBaseUrlForBoxHost,
   type InferenceEndpoint,
   type InferenceEndpointRole,
 } from "../../../shared/inference-endpoints.js";
 import { streamCodexDirectResponses, type CodexDirectTool } from "./codex-direct-responses.js";
+import { isRetryableInferenceError } from "./inference-retry.js";
 import type { LabelMessage, PromptExecutor } from "./sand-labeling.js";
+
+export { isRetryableInferenceError } from "./inference-retry.js";
 
 type Loose = Record<string, any>;
 interface ProviderMessage extends LabelMessage { role: string; content: string | readonly unknown[] }
@@ -55,8 +59,8 @@ function persistedSecrets(): Record<string, string> {
 }
 
 function secretValue(name: string): string | undefined {
-  const value = process.env[name]?.trim() || persistedSecrets()[name]?.trim();
-  return value != null && value.length > 0 ? value : undefined;
+  const fromFile = persistedSecrets()[name]?.trim();
+  return fromFile != null && fromFile.length > 0 ? fromFile : undefined;
 }
 
 function openRouterCredential(): string {
@@ -298,19 +302,9 @@ function toToolSet(definitions: readonly Loose[] | undefined, executeTool?: Rout
 function resolvedApiEndpoint(role: InferenceEndpointRole = "chat"): InferenceEndpoint {
   const document = loadedEndpoints();
   if (document != null) return endpointForRole(document, role);
-  const fallback = documentFromPreset("openrouter").endpoints[0]!;
+  const fallback = documentFromPreset("custom").endpoints[0]!;
   const envModel = process.env.SAND_OPENROUTER_MODEL?.trim();
   return envModel == null || envModel.length === 0 ? fallback : { ...fallback, model: envModel };
-}
-
-function isRetryableInferenceError(error: unknown): boolean {
-  const status = typeof error === "object" && error != null ? (error as { status?: unknown; statusCode?: unknown }).status ?? (error as { statusCode?: unknown }).statusCode : undefined;
-  if (typeof status === "number") {
-    if (status === 401 || status === 402 || status === 403 || status === 404 || status === 408 || status === 409 || status === 425 || status === 429 || status === 529) return true;
-    if (status >= 500 && status <= 599) return true;
-  }
-  const message = error instanceof Error ? error.message : String(error);
-  return /401|403|404|408|429|500|502|503|504|529|rate limit|quota|insufficient|too many requests|overloaded|capacity|no available|model not found|not found|timeout|ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENOTFOUND|fetch failed|EAI_AGAIN|temporarily unavailable|try again|unavailable/i.test(message);
 }
 
 function streamOpenaiCompatible(endpoint: InferenceEndpoint, messages: readonly ProviderMessage[], invocationId: string, definitions?: readonly Loose[], executeTool?: RoutedToolExecutor, onUsage?: (usage: UsageRecord) => void) {
@@ -318,7 +312,7 @@ function streamOpenaiCompatible(endpoint: InferenceEndpoint, messages: readonly 
   if (apiKey == null) throw new Error(`API endpoint "${endpoint.id}" needs ${endpoint.apiKeySecret}. Add it in Settings → Router.`);
   const model: LanguageModelV1 = createOpenAI({
     apiKey,
-    baseURL: endpoint.baseURL,
+    baseURL: rewriteLoopbackBaseUrlForBoxHost(endpoint.baseURL),
     compatibility: "compatible",
     name: endpoint.id,
     ...(endpoint.headers == null ? {} : { headers: { ...endpoint.headers } }),
@@ -337,6 +331,7 @@ function streamOpenaiCompatible(endpoint: InferenceEndpoint, messages: readonly 
     ...(effort === "off" ? {} : { providerOptions: { openai: { reasoningEffort: effort } } }),
     toolCallStreaming: true,
     maxSteps: tools === undefined ? 1 : 8,
+    abortSignal: AbortSignal.timeout(300_000),
   });
   const extendedUsage = result.usage.then(value => ({
     inputTokens: value.promptTokens,

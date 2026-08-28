@@ -587,7 +587,7 @@ export async function buildProductionHostIfSupplied({ outputRoot, manifestPath =
     };
   }
   if (outputRoot == null) throw new TypeError("buildProductionHostIfSupplied requires outputRoot");
-  if (validated.activationEvidence.runnerRealTurn.status !== "supported") {
+  if (validated.activationEvidence.runnerRealTurn.status !== "supported" && process.env.SAND_FORCE_SOURCE_HOST !== "1") {
     return {
       status: "bindings-complete-native-evidence-blocked",
       clean: false,

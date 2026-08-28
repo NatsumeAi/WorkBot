@@ -1,7 +1,7 @@
 export const DISK_SAVER_TASK = [
   "Audit that machine and nothing else: the user's own computer, which ExternalShell and ExternalRead act on, is not the one under pressure.",
   "Start with a read-only inspection over Shell from /workspace outward. Report how much space is free and how much is used, then list the largest items and the safest cleanup candidates, with how much each would recover and why it is safe to remove.",
-  "Preserve /home/box/openbot-data, the user's work, credentials, logins, and Git state. Delete or modify nothing until the user confirms a plan.",
+  "Preserve /home/box/sand-data, the user's work, credentials, logins, and Git state. Delete or modify nothing until the user confirms a plan.",
 ].join("\n");
 
 export const SAND_DISK_SAVER_KICKSTART_PROMPT = [

@@ -4,7 +4,7 @@ import { errorLogTag } from "../../../shared/errors.js";
 import { reportBoxStoreDiagnostic } from "./box-store-diagnostics.js";
 export const INCOMPLETE_LEGACY_HYDRATE_REASON = "incomplete_legacy_hydrate";
 export const BOX_STORE_HYDRATION_HANDOFF_FILE_NAME = ".box-store-legacy-hydration-complete";
-export const BOX_STORE_HYDRATION_HANDOFF_MANIFEST_PATH = `home/box/openbot-data/${BOX_STORE_HYDRATION_HANDOFF_FILE_NAME}`;
+export const BOX_STORE_HYDRATION_HANDOFF_MANIFEST_PATH = `home/box/sand-data/${BOX_STORE_HYDRATION_HANDOFF_FILE_NAME}`;
 export function isHydrationHandoffManifestPath(relPath: string): boolean { return relPath === BOX_STORE_HYDRATION_HANDOFF_MANIFEST_PATH || relPath.startsWith(`${BOX_STORE_HYDRATION_HANDOFF_MANIFEST_PATH}.`) && relPath.endsWith(".tmp"); }
 function isCount(value: unknown): value is number { return value != null && Number.isInteger(value) && (value as number) >= 0; }
 export interface HydrationEvidence { failures?: readonly unknown[]; manifestEntries?: number; files?: number; verified?: number; hydrateSource?: string; authoritativeStoreDbEntries?: number; restoredStoreDbEntries?: number }

@@ -126,7 +126,7 @@ import { createComputerRebuildMigrationStore } from "../recovered/features/acces
 import { initialComputerRebuildState } from "../recovered/features/access/cover/computer-rebuild-model";
 import { createComputerRebuildTransportSource, createComputerRebuildTransportStore } from "../recovered/features/access/cover/computer-rebuild-transport-store";
 import { ComputerReconnectBanner, ComputerRebuildProgressBanner, type ComputerRebuildBannerInput } from "../recovered/features/computer/rebuild/banner";
-import { createRosterSnapshotSource, createRosterSnapshotStore } from "../recovered/features/access/cover/roster-snapshot-store";
+import { createRosterSnapshotSource, createRosterSnapshotStore, rendererRosterAccountSlot } from "../recovered/features/access/cover/roster-snapshot-store";
 import { createSettingsUpdateController } from "../recovered/features/settings/overlay/updates-controller";
 import { SettingsNoticeView } from "../recovered/features/settings/overlay/notice";
 import { createSettingsNoticeController } from "./settings-notice-controller";
@@ -1099,9 +1099,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
   const paletteAccountIdentity = account?.kind === "logged-in"
     ? `logged-in:${account.authId ?? account.email ?? "account"}`
     : account?.kind ?? "signed-out";
-  const transcriptAccountSlot = account?.kind === "logged-in"
-    ? account.authId ?? account.email ?? "account"
-    : null;
+  const transcriptAccountSlot = rendererRosterAccountSlot(account);
   localToolPermissionScopeGate.enter(transcriptAccountSlot);
   const reactionRootCallbacks = useMemo(() => ({
     onReacted: (input: import("../recovered/features/conversation/cards/transcript-card/reaction-actions").ReactToMessageInput) => {
@@ -2149,7 +2147,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
     const isCurrent = () => rosterAttemptRef.current === attempt
       && accountScopeGenerationRef.current === accountScopeGeneration
       && transportScopeGenerationRef.current === transportScopeGeneration
-      && accountRef.current?.kind === "logged-in";
+      && accountRef.current != null;
     setIsRosterRetrying(true);
     try {
       const projected = projectRendererAgents(await client.call("listAgents"));
@@ -2292,13 +2290,13 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
       && clientLifecycleGenerationRef.current === lifecycleGeneration
       && accountScopeGenerationRef.current === accountScopeGeneration;
     client.ready.then(() => {
-      if (!isCurrent() || accountRef.current?.kind !== "logged-in") return;
+      if (!isCurrent() || accountRef.current == null) return;
       transportScopeGenerationRef.current += 1;
       setTransport("connected");
       void refreshRoster().catch((error: unknown) => setNotice(error instanceof Error ? error.message : String(error)));
       void refreshAgentNetworkAvailability();
     }, () => {
-      if (!isCurrent() || accountRef.current?.kind !== "logged-in") return;
+      if (!isCurrent() || accountRef.current == null) return;
       transportScopeGenerationRef.current += 1;
       setTransport("down");
       setRosterLoadFailed(true);
@@ -2311,7 +2309,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
         setRosterLoadFailed(true);
         setIsRosterRetrying(false);
       }
-      if (state === "connected" && accountRef.current?.kind === "logged-in") {
+      if (state === "connected" && accountRef.current != null) {
         if (connectionController?.get().isRetrying !== true) {
           void refreshRoster().catch((error: unknown) => setNotice(error instanceof Error ? error.message : String(error)));
         }
@@ -2319,7 +2317,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
       }
     });
     const stopAgents = client.subscribe("agents", (value) => {
-      if (!isCurrent() || accountRef.current?.kind !== "logged-in") return;
+      if (!isCurrent() || accountRef.current == null) return;
       const projected = projectRendererAgents(value);
       setPrivacyBlocked(false);
       setRosterLoadFailed(false);
@@ -2330,13 +2328,13 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
       setHasLoadedAgents(true);
     });
     const stopUpsert = client.subscribe("agent-upserted", (value) => {
-      if (!isCurrent() || accountRef.current?.kind !== "logged-in") return;
+      if (!isCurrent() || accountRef.current == null) return;
       const projected = projectRendererAgent(value);
       if (projected != null) setAgents((current) => [projected, ...current.filter((agent) => agent.id !== projected.id)].sort((a, b) => b.updatedAt - a.updatedAt));
     });
     const stopTranscript = reactionRoot?.feed.observeEntriesFeed({
       onBaseline: ({ agentId: ownerId, entries: rawEntries }) => {
-        if (!isCurrent() || accountRef.current?.kind !== "logged-in") return;
+        if (!isCurrent() || accountRef.current == null) return;
         const owner = agentsRef.current.find((agent) => agent.id === ownerId);
         const projectedEntries = projectTranscriptFeedEntries(rawEntries, owner?.name ?? UI_TEXT.title, ownerId);
         for (const entry of projectedEntries) {
@@ -2354,7 +2352,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
         setEntriesByAgent((current) => ({ ...current, [ownerId]: projectedEntries }));
       },
       onUpdated: ({ agentId: ownerId, after: event }) => {
-        if (!isCurrent() || accountRef.current?.kind !== "logged-in") return;
+        if (!isCurrent() || accountRef.current == null) return;
         const owner = agentsRef.current.find((agent) => agent.id === ownerId);
         const projected = projectTranscriptEntry(event, entriesByAgentRef.current[ownerId]?.length ?? 0, owner?.name ?? UI_TEXT.title, ownerId);
         if (projected == null || !ownerId) return;
@@ -2365,7 +2363,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
         });
       },
       onCleared: (ownerId) => {
-        if (!isCurrent() || accountRef.current?.kind !== "logged-in") return;
+        if (!isCurrent() || accountRef.current == null) return;
         setEntriesByAgent((current) => {
           if (!(ownerId in current)) return current;
           const next = { ...current };
@@ -2377,7 +2375,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
         transcriptPaginationController.reset();
       },
       onAppended: ({ agentId: ownerId, entry: event }) => {
-      if (!isCurrent() || accountRef.current?.kind !== "logged-in") return;
+      if (!isCurrent() || accountRef.current == null) return;
       const owner = agentsRef.current.find((agent) => agent.id === ownerId);
       const projected = projectTranscriptEntry(event, entriesByAgentRef.current[ownerId]?.length ?? 0, owner?.name ?? UI_TEXT.title, ownerId);
       if (projected == null || !ownerId) return;
@@ -2442,9 +2440,9 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
 
   useEffect(() => {
     let active = true;
-    const accountSlot = account?.kind === "logged-in" ? pinnedAccountKey : null;
+    const accountSlot = rendererRosterAccountSlot(account);
     void selectionStore.restore(accountSlot).then(() => {
-      if (!active || accountSlot == null) return;
+      if (!active) return;
       selectionStore.reconcile({
         agentIds: agentsRef.current.map((agent) => agent.id),
         isRosterComplete: hasLoadedAgentsRef.current
@@ -2454,7 +2452,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
   }, [account?.kind, pinnedAccountKey, selectionStore]);
 
   useEffect(() => {
-    const accountSlot = account?.kind === "logged-in" ? pinnedAccountKey : null;
+    const accountSlot = rendererRosterAccountSlot(account);
     void composerDraftStore.restore(accountSlot);
   }, [account?.kind, composerDraftStore, pinnedAccountKey]);
 
@@ -2463,7 +2461,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
   }, [uiLayoutStore]);
 
   useEffect(() => {
-    const accountSlot = account?.kind === "logged-in" ? pinnedAccountKey : null;
+    const accountSlot = rendererRosterAccountSlot(account);
     setAccessFirstBox(resetFirstBoxGate());
     if (accessRosterStore == null) return;
     void accessRosterStore.connect(accountSlot);
@@ -2529,7 +2527,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
   }, [accessRosterSnapshot.failure?.code, accessRosterSnapshot.failure?.transportKind, accessRosterSnapshot.isShowingRestoredRoster, accessRosterSnapshot.loadState]);
 
   useEffect(() => {
-    const accountSlot = account?.kind === "logged-in" ? pinnedAccountKey : null;
+    const accountSlot = rendererRosterAccountSlot(account);
     setDeleteSection(null);
     sidebarCollapseStore.reset();
     sidebarSectionsStore.reset();

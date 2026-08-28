@@ -19,7 +19,25 @@ export function isSandInferenceProvider(value: unknown): value is SandInferenceP
   return typeof value === "string" && (SAND_INFERENCE_PROVIDERS as readonly string[]).includes(value);
 }
 
+/** Missing provider is API. A saved model pool is never Cursor. */
+export function resolveSandInferenceProvider(
+  provider: unknown,
+  endpoints?: { readonly endpoints?: readonly unknown[] } | null,
+): SandInferenceProvider {
+  const value = isSandInferenceProvider(provider) ? provider : "openrouter";
+  if (value === "cursor" && Array.isArray(endpoints?.endpoints) && endpoints.endpoints.length > 0) return "openrouter";
+  return value;
+}
+
 export function emptySandInferenceRouterUsage(): SandInferenceRouterUsage {
   const empty = (): SandInferenceRouterUsageProvider => ({ requests: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, lastUsedAt: null });
   return { schemaVersion: 1, providers: { cursor: empty(), "claude-code": empty(), codex: empty(), openrouter: empty() } };
+}
+
+/** API / pool never waits on Cursor Connect or Cursor cloud cron. */
+export function usesLocalInferenceClock(
+  provider: unknown,
+  endpoints?: { readonly endpoints?: readonly unknown[] } | null,
+): boolean {
+  return resolveSandInferenceProvider(provider, endpoints) !== "cursor";
 }

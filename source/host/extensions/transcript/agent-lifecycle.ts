@@ -129,7 +129,7 @@ export class AgentLifecycle {
       !session.db.getIntroductionPending()
     )
       return false;
-    if (session.db.getTranscriptEntries().some(isUserMessageEntry)) {
+    if (session.db.getTranscriptEntries().some((entry) => entry.kind === "send-message" || isUserMessageEntry(entry))) {
       session.db.setIntroductionPending(false);
       return false;
     }
@@ -147,14 +147,18 @@ export class AgentLifecycle {
               ? SAND_DISK_SAVER_KICKSTART_PROMPT
               : SAND_ONBOARDING_KICKSTART_PROMPT;
           const result = await runner.run(prompt, { hidden: true });
-          let delivered = result.sentMessageCount > 0;
-          if (!result.aborted && result.sentMessageCount === 0)
+          let delivered = result.sentMessageCount > 0
+            || session.db.getTranscriptEntries().some((entry) => entry.kind === "send-message");
+          if (!result.aborted && !delivered)
             delivered =
               await this.tm.automationRuntime.ensureHiddenTurnReply(runner);
           if (result.quiescedForUpgrade) {
             this.tm.upgradeResume.markAgentResumePending(session, "turn");
             session.db.setIntroductionPending(false);
-          } else if (!result.aborted && delivered)
+          } else if (
+            delivered
+            || session.db.getTranscriptEntries().some((entry) => entry.kind === "send-message")
+          )
             session.db.setIntroductionPending(false);
           await this.tm.roster.emitAgentUpdate(session.id);
         } catch (error) {

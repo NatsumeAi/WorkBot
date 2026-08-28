@@ -35,7 +35,6 @@ import {
   buildProductionElectronMainIfSupplied,
   electronMainBindingProvenancePath,
 } from "./electron-main-production-activation.mjs";
-import { applyOriginalRendererRouterPatch } from "./lib/router-renderer-patch.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 export const defaultElectronMainBindingManifestPath = path.join(repoRoot, "manifests/reconstruction/electron-main-production-bindings-manifest.json");
@@ -272,7 +271,6 @@ export async function buildFidelityReconstructedAsar({
   const prepared = await prepareProductionActivations(base, hostBindingManifest, electronMainBindingManifest, fidelityRuntimeComposition, { reconstructedPackage: true });
   const clean = await attachCompositionAudit(prepared);
   await overlayCleanDistribution(clean.outputRoot, { stageRoot, composition: clean.buildManifest.runtimeComposition });
-  await applyOriginalRendererRouterPatch({ stageRoot });
   await overlayAuditMetadata(clean, { stageRoot });
   await packStagedAppWithIntegrity({ stageRoot, archivePath, unpackedRoot });
   console.log(`Fidelity hybrid ASAR ready: ${archivePath}`);

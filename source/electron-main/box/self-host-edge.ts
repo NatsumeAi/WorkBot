@@ -76,15 +76,45 @@ async function docsPath(resourcesPath: string): Promise<string> {
   return fileURLToPath(new URL("../../../docs/self-host.md", import.meta.url));
 }
 
+async function probeGateway(gatewayUrl: string, token: string): Promise<{ ok: boolean; message: string }> {
+  if (gatewayUrl.length === 0) return { ok: false, message: "Not connected." };
+  try {
+    const response = await fetch(`${gatewayUrl}${GATEWAY_EVENTS_PATH}`, {
+      headers: {
+        ...GATEWAY_SSE_ACCEPT_HEADERS,
+        ...(token.length > 0 ? { authorization: `Bearer ${token}` } : {}),
+      },
+      signal: AbortSignal.timeout(3_000),
+    });
+    void response.body?.cancel().catch(() => {});
+    if (response.status === 401 || response.status === 403) {
+      return { ok: false, message: token.length > 0 ? "Wrong token." : "Enter a token." };
+    }
+    return response.ok ? { ok: true, message: "Connected." } : { ok: false, message: "Can't reach that URL." };
+  } catch {
+    return { ok: false, message: "Can't reach that URL." };
+  }
+}
+
 export function createSelfHostEdgePort(ports: SelfHostEdgePorts) {
   return {
     async getConnection() {
       const envUrl = process.env.SAND_HOST_GATEWAY_URL?.trim() ?? "";
       const stored = await readSelfHostGateway(ports.settingsPath);
+      const gatewayUrl = (envUrl.length > 0 ? envUrl : stored?.gatewayUrl ?? "").replace(/\/$/, "");
+      const token = envUrl.length > 0 ? (process.env.SAND_HOST_GATEWAY_TOKEN?.trim() ?? "") : stored?.token ?? "";
+      const hasToken = token.length > 0;
+      const probed = gatewayUrl.length > 0 ? await probeGateway(gatewayUrl, token) : { ok: false, message: "Not connected." };
       return {
         envOverrides: envUrl.length > 0,
-        gatewayUrl: envUrl.length > 0 ? envUrl : stored?.gatewayUrl ?? "",
-        hasToken: envUrl.length > 0 ? (process.env.SAND_HOST_GATEWAY_TOKEN?.trim() ?? "").length > 0 : stored != null,
+        gatewayUrl,
+        hasToken,
+        host: stored?.host ?? "",
+        username: stored?.username ?? "",
+        sshPort: stored?.sshPort ?? SELF_HOST_DEFAULT_SSH_PORT,
+        gatewayPort: stored?.gatewayPort ?? SELF_HOST_DEFAULT_GATEWAY_PORT,
+        status: gatewayUrl.length === 0 ? "missing" : probed.ok ? "connected" : "saved",
+        statusMessage: probed.message,
         dockerInstallUrl: DOCKER_ENGINE_INSTALL_URL,
         defaultGatewayPort: SELF_HOST_DEFAULT_GATEWAY_PORT,
         defaultSshPort: SELF_HOST_DEFAULT_SSH_PORT,
@@ -97,15 +127,25 @@ export function createSelfHostEdgePort(ports: SelfHostEdgePorts) {
       if (request.clear === true || (gatewayUrl == null && token == null && request.gatewayUrl === "")) {
         await clearSelfHostGateway(ports.settingsPath);
         ports.restartCoordinator();
-        return { gatewayUrl: "", hasToken: false };
+        return { gatewayUrl: "", hasToken: false, status: "missing", statusMessage: "Not connected." };
       }
       const stored = await readSelfHostGateway(ports.settingsPath);
       const nextUrl = gatewayUrl ?? stored?.gatewayUrl;
       const nextToken = token ?? stored?.token;
-      if (nextUrl == null || nextToken == null) return { gatewayUrl: stored?.gatewayUrl ?? "", hasToken: stored != null, message: "Enter an access URL and token." };
-      const saved = await writeSelfHostGateway(ports.settingsPath, { gatewayUrl: nextUrl, token: nextToken });
+      if (nextUrl == null || nextToken == null) {
+        return { gatewayUrl: stored?.gatewayUrl ?? "", hasToken: stored != null, status: stored == null ? "missing" : "saved", statusMessage: "Enter an access URL and token.", message: "Enter an access URL and token." };
+      }
+      const saved = await writeSelfHostGateway(ports.settingsPath, {
+        gatewayUrl: nextUrl,
+        token: nextToken,
+        host: optionalString(request.host) ?? stored?.host,
+        username: optionalString(request.username) ?? stored?.username,
+        sshPort: optionalPort(request.port ?? request.sshPort, stored?.sshPort ?? SELF_HOST_DEFAULT_SSH_PORT),
+        gatewayPort: optionalPort(request.gatewayPort, stored?.gatewayPort ?? SELF_HOST_DEFAULT_GATEWAY_PORT),
+      });
       ports.restartCoordinator();
-      return { gatewayUrl: saved.gatewayUrl, hasToken: true };
+      const probed = await probeGateway(saved.gatewayUrl, saved.token);
+      return { gatewayUrl: saved.gatewayUrl, hasToken: true, status: probed.ok ? "connected" : "saved", statusMessage: probed.message };
     },
     getInstallCommand(raw: unknown) {
       const request = asRecord(raw);
@@ -154,22 +194,7 @@ export function createSelfHostEdgePort(ports: SelfHostEdgePorts) {
       const gatewayUrl = (optionalString(request.gatewayUrl) ?? stored?.gatewayUrl ?? "").replace(/\/$/, "");
       const token = optionalString(request.token) ?? stored?.token ?? "";
       if (gatewayUrl.length === 0) return { ok: false, message: "Enter an access URL." };
-      try {
-        const response = await fetch(`${gatewayUrl}${GATEWAY_EVENTS_PATH}`, {
-          headers: {
-            ...GATEWAY_SSE_ACCEPT_HEADERS,
-            ...(token.length > 0 ? { authorization: `Bearer ${token}` } : {}),
-          },
-          signal: AbortSignal.timeout(3_000),
-        });
-        void response.body?.cancel().catch(() => {});
-        if (response.status === 401 || response.status === 403) {
-          return { ok: false, message: token.length > 0 ? "Wrong token." : "Enter a token." };
-        }
-        return response.ok ? { ok: true, message: "Connected." } : { ok: false, message: "Can't reach that URL." };
-      } catch {
-        return { ok: false, message: "Can't reach that URL." };
-      }
+      return probeGateway(gatewayUrl, token);
     },
     async pickKeyFile() {
       const result = await ports.showOpenDialog({ title: "Choose an SSH key", properties: ["openFile"] });

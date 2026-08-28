@@ -10,6 +10,7 @@ import {
   type InferenceCredential,
   type RenewalResult
 } from "./credential-renewer.js";
+import { hostInferenceCanRunWithoutCursor } from "../inference/provider-session.js";
 
 export class SandCredentialsWaitingError extends Error {
   constructor(message: string) { super(message); this.name = "SandCredentialsWaitingError"; }
@@ -76,7 +77,9 @@ export function createHostAuthService(options: {
     ? `DEV inference-credential renewer started, reading short-lived tokens from ${devTokenFile} (dev:box-docker local loop)`
     : hasRenewalCredential
       ? "inference-credential renewer started (backend self-renewal is the sole inference-credential source)"
-      : "inference-credential renewer started, but no renewal credential was delivered into the box; inference is unavailable until the box is re-provisioned with one");
+      : hostInferenceCanRunWithoutCursor()
+        ? "inference-credential renewer started with no Cursor renewal credential; custom API keys on the box still run inference"
+        : "inference-credential renewer started, but no renewal credential was delivered into the box; Cursor inference is unavailable until the box is re-provisioned with one");
   return {
     async getAccessToken(_options?: { readonly backendUrl?: string }): Promise<string> {
       let token = store.getValidAccessToken();

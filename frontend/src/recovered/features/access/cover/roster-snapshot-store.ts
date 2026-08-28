@@ -11,6 +11,21 @@ export const ROSTER_SNAPSHOT_SLICE = {
   schemaVersion: 2
 } as const;
 
+export const UNSIGNED_ROSTER_ACCOUNT_SLOT = "local";
+
+/** Matches coordinator `cursorAccountSlot` / UbX `dde()` after the unsigned-local patch. */
+export function rendererRosterAccountSlot(account: {
+  readonly kind?: string;
+  readonly authId?: string | null;
+  readonly email?: string | null;
+} | null | undefined): string {
+  if (account?.kind === "logged-in") {
+    const slot = account.authId ?? account.email;
+    if (slot != null && slot.length > 0) return slot;
+  }
+  return UNSIGNED_ROSTER_ACCOUNT_SLOT;
+}
+
 export type RosterSnapshotLoadState = "loading" | "ready" | "error";
 export type RosterSnapshotTransportState = "connecting" | "connected" | "down";
 

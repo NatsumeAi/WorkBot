@@ -14,7 +14,7 @@ import { selectSandExperimentTurnModel } from "./sand-model-experiment.js";
 import type { SummarizationPromptSession } from "../../../packages/agent-summarization/summarization-handler.js";
 import { SandSettingsStore } from "../../../shared/node/settings/sand-settings-store.js";
 import { getSandRootDir } from "../../host-paths.js";
-import { createProviderPromptSession } from "./provider-session.js";
+import { createProviderPromptSession, hostInferenceCanRunWithoutCursor } from "./provider-session.js";
 
 export const SAND_DEFAULT_MODEL_ID = "grok-4.5";
 export const SAND_DEFAULT_MODEL_SELECTION: SandAgentModelSelection = { modelId: SAND_DEFAULT_MODEL_ID, maxMode: true, parameters: [{ id: "effort", value: "high" }, { id: "fast", value: "true" }] };
@@ -112,7 +112,10 @@ export function createCursorSandInference(options: CursorSandInferenceOptions): 
         return { getExecutor: () => createMockPromptExecutor(() => ({ response: mockResponse, chunkSize: 8 })), getModelId: () => modelId };
       }
       const routedProvider = new SandSettingsStore(join(getSandRootDir(), "settings.json")).getInferenceProvider();
-      if (routedProvider !== "cursor") return createProviderPromptSession(routedProvider, sessionOptions?.isSummarizationSession === true ? "compact" : "chat") as unknown as CursorPromptSession;
+      if (routedProvider !== "cursor" || hostInferenceCanRunWithoutCursor()) {
+        const provider = routedProvider === "cursor" ? "openrouter" : routedProvider;
+        return createProviderPromptSession(provider, sessionOptions?.isSummarizationSession === true ? "compact" : "chat") as unknown as CursorPromptSession;
+      }
       const experimentState = options.getModelExperimentState?.(), requestSource = sessionOptions?.requestSource;
       const experimentModelOverride = selectSandExperimentTurnModel({ ...(experimentState === undefined ? {} : { state: experimentState }), ...(requestSource === undefined ? {} : { requestSource }), readConfiguredDefaultModel: () => options.getConfiguredDefaultModel?.(), readConfiguredAutomationsModel: () => options.getConfiguredAutomationsModel?.() });
       const storedDefaultModel = options.getDefaultModel?.(), storedComputerUseModel = options.getComputerUseModel?.(), storedBrowserUseModel = options.getBrowserUseModel?.();

@@ -42,10 +42,9 @@ interface LegacyPending<Checkpoint, Store> {
 }
 
 /**
- * Pins a conversation to one persistence regime. Once a journal marker owns a
- * conversation, turning the experiment off cannot route it back to the legacy
- * writer. Route promises are cached so concurrent first writes cannot race two
- * claims or split a transcript between implementations.
+ * Pins a conversation to one persistence regime while the journal experiment is
+ * on. Leftover `*.journal-mode` markers must not keep routing after the
+ * experiment is forced off — that path throws on the third persist.
  */
 export class RoutedTranscriptMirror<Checkpoint, Store> {
   readonly legacyPending = new Map<
@@ -72,8 +71,8 @@ export class RoutedTranscriptMirror<Checkpoint, Store> {
   private async selectRoute(
     conversationId: string
   ): Promise<TranscriptMirrorRoute> {
-    if (await this.journal.ownsConversation(conversationId)) return "journal";
     if (!await this.isJournalEnabled()) return "legacy";
+    if (await this.journal.ownsConversation(conversationId)) return "journal";
 
     await this.journal.claimConversation(conversationId);
     return "journal";
@@ -162,7 +161,7 @@ export class RoutedTranscriptMirror<Checkpoint, Store> {
     let recoverOwnedJournal = false;
 
     if (selected == null) {
-      if (!await this.journal.ownsConversation(conversationId)) {
+      if (!await this.isJournalEnabled() || !await this.journal.ownsConversation(conversationId)) {
         this.legacyPending.delete(conversationId);
         return;
       }

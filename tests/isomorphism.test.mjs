@@ -68,6 +68,8 @@ test("android capability set still exposes every DesktopBridge top-level key", a
   assert.equal(typeof desktop.agent.getInferenceRouter, "function");
   assert.equal(typeof desktop.agent.getBoxRuntime, "function");
   assert.equal(typeof desktop.agent.getSelfHostConnection, "function");
+  assert.equal(typeof desktop.agent.getOutboundProxy, "function");
+  assert.equal(typeof desktop.agent.setOutboundProxy, "function");
   assert.equal(typeof desktop.windowControls.minimize, "function");
   assert.equal(typeof desktop.foreverBox.forceRecreate, "function");
 });

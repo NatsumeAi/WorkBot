@@ -247,6 +247,8 @@ export function createDesktopBridge(options: DesktopBridgeFactoryOptions): Recor
       getInferenceRouter: () => gatedCall("inferenceRouter", "getInferenceRouter"),
       setInferenceRouter: (provider: string) => gatedCall("inferenceRouter", "setInferenceRouter", { provider }),
       setInferenceEndpoints: (document: unknown) => gatedCall("inferenceRouter", "setInferenceEndpoints", { document }),
+      getOutboundProxy: () => gatedCall("remoteBox", "getOutboundProxy"),
+      setOutboundProxy: (settings: unknown) => gatedCall("remoteBox", "setOutboundProxy", settings),
       getBoxRuntime: () => gatedCall("localDockerVm", "getBoxRuntime"),
       setBoxRuntime: (mode: string) => gatedCall("localDockerVm", "setBoxRuntime", { mode }),
       getSelfHostConnection: () => gatedCall("remoteBox", "getSelfHostConnection"),

@@ -10,16 +10,16 @@ export interface RouterProvider {
   readonly usageSource: "cursor" | "external";
 }
 
-export const DEFAULT_ROUTER_PROVIDER: RouterProviderId = "cursor";
+export const DEFAULT_ROUTER_PROVIDER: RouterProviderId = "openrouter";
 export const ROUTER_PROVIDER_PERSISTENCE_KEY = "settings.router-provider.v1";
 
 export const ROUTER_PROVIDERS: readonly RouterProvider[] = [
   {
-    id: "cursor",
-    label: "Cursor",
-    description: "Use your signed-in Cursor account and its hosted agent models.",
-    usageDescription: "Included and on-demand usage from your Cursor account.",
-    usageSource: "cursor"
+    id: "openrouter",
+    label: "API",
+    description: "OpenAI-compatible providers, relays, and local servers. Models pick a key from the Keys list.",
+    usageDescription: "Usage is recorded from the API provider you assigned.",
+    usageSource: "external"
   },
   {
     id: "claude-code",
@@ -36,11 +36,11 @@ export const ROUTER_PROVIDERS: readonly RouterProvider[] = [
     usageSource: "external"
   },
   {
-    id: "openrouter",
-    label: "OpenRouter",
-    description: "Use models and billing from your OpenRouter account.",
-    usageDescription: "OpenRouter usage and spend are managed in your OpenRouter account and are not exposed as an in-app meter.",
-    usageSource: "external"
+    id: "cursor",
+    label: "Cursor",
+    description: "Use your signed-in Cursor account and its hosted agent models.",
+    usageDescription: "Included and on-demand usage from your Cursor account.",
+    usageSource: "cursor"
   }
 ];
 

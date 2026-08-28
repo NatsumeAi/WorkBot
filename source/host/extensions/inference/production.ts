@@ -1,6 +1,6 @@
 import type { HostExtensionContext } from "../../../internal/host-extensions.js";
 import type { SandAgentModelSelection } from "../../../shared/agents/sand-agent-model.js";
-import { createCursorWebFetchService, createCursorWebSearchService } from "./cursor-web-tools.js";
+import { createBoxWebFetchService, createBoxWebSearchService } from "./box-web-tools.js";
 import { createHostInference } from "./inference-service.js";
 import type { InferenceExtensionContext } from "./extension.js";
 
@@ -22,22 +22,11 @@ export function createInferenceProductionExtras(
         onModelExperimentApplied,
       });
     },
-    createWebSearch(args) {
-      const request = args as { modelId: string; onRequestId?: (requestId: string) => void };
-      return createCursorWebSearchService({
-        getAccessToken: auth.getAccessToken,
-        getMachineId: auth.getMachineId,
-        modelId: request.modelId,
-        ...(request.onRequestId == null ? {} : { onRequestId: request.onRequestId }),
-      });
+    createWebSearch(_args) {
+      return createBoxWebSearchService();
     },
-    createWebFetch(args) {
-      const request = args as { onRequestId?: (requestId: string) => void };
-      return createCursorWebFetchService({
-        getAccessToken: auth.getAccessToken,
-        getMachineId: auth.getMachineId,
-        ...(request.onRequestId == null ? {} : { onRequestId: request.onRequestId }),
-      });
+    createWebFetch(_args) {
+      return createBoxWebFetchService();
     },
   };
 }

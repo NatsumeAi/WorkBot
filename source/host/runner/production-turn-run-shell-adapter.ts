@@ -237,9 +237,7 @@ export function createProductionTurnRunShellAdapter(
       const linked = linkTurnRunContext(input.context(), context.signal);
       const updateRelay: ProductionTurnRunShellPreparedTurn["updateRelay"] = {};
       const emitUpdate = (update: ForwardedUpdate): void => {
-        const callbacks = activePrepared === updateRelay.prepared
-          ? updateRelay.callbacks
-          : undefined;
+        const callbacks = updateRelay.callbacks;
         if (callbacks !== undefined) {
           if (update.type === "text-delta" && typeof update.text === "string") {
             callbacks.collectText(update.text);

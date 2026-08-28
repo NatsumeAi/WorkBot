@@ -23,6 +23,7 @@ import { SandMcpListingSummaries } from "./mcp-listing-summaries.js";
 import { validateMcpServerId } from "./mcp-server-id.js";
 import { parseServerConfig, validateServerName } from "./mcp-validation.js";
 import { reportMcpHostEdgeFailure } from "./mcp-diagnostics.js";
+import { mergeLocalInstallDisplay, readLocalMcpInstalls, removeLocalPluginInstall, settingsPathOf } from "./local-mcp-installs.js";
 const EMPTY_SETTINGS: any = {
   scopeToAccount() {},
   migrateMcpCustomInstructionToServerId() {},
@@ -99,6 +100,7 @@ export class SandMcpManager {
       listEffectivePlugins: () => this.listEffectivePlugins(),
       requireAccountWriter: () => this.requireAccountWriter(),
       reloadServers: () => this.reloadServers(),
+      settingsStore: this.settingsStore,
     });
     this.slots = new SandMcpAccountSlotLifecycle({
       backendMcpExec: this.backendMcpExec,
@@ -131,11 +133,17 @@ export class SandMcpManager {
             display.cacheScope === this.lastScope
               ? this.lastDisplay
               : null;
-          if (generation !== this.generation) return cached;
-          if (display == null) {
+        if (generation !== this.generation) return cached;
+        if (display == null) {
+          const local = mergeLocalInstallDisplay(null, this.settingsStore);
+          if (local == null) {
             this.definitionSource.clearLastKnownAccountConfig();
             return null;
           }
+          display = local;
+        } else {
+          display = mergeLocalInstallDisplay(display, this.settingsStore) ?? display;
+        }
           if (
             display.cacheScope !== undefined &&
             display.cacheScope !== this.lastScope
@@ -399,6 +407,14 @@ export class SandMcpManager {
         );
       } catch {}
     const rows = state.servers.filter((server: any) => server.pluginId === id);
+    const settingsPath = settingsPathOf(this.settingsStore);
+    if (
+      !gone &&
+      rows.length === 0 &&
+      settingsPath != null
+    ) {
+      gone = !readLocalMcpInstalls(settingsPath).some((install) => install.pluginId === id);
+    }
     return gone && rows.length === 0
       ? { state, removed: true }
       : {
@@ -411,6 +427,14 @@ export class SandMcpManager {
         };
   }
   private async performPluginUninstall(id: string) {
+    const settingsPath = settingsPathOf(this.settingsStore);
+    const removedLocal = settingsPath != null && removeLocalPluginInstall(settingsPath, id);
+    if (removedLocal) {
+      try {
+        await this.accountWriter?.uninstallPlugin({ pluginId: BigInt(id) });
+      } catch {}
+      return this.reloadServers();
+    }
     const writer = this.requireAccountWriter();
     let display =
       this.accountDisplayConfigProvider == null ? this.lastDisplay : null;

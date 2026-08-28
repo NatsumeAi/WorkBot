@@ -253,6 +253,33 @@ const parseConfigText = (
     return {};
   }
 };
+export async function fetchPluginServersForInstall(
+  plugin: SandMarketplacePlugin,
+  getAccessToken: unknown,
+  getMachineId: unknown,
+  fetchImpl: typeof fetch = fetch,
+): Promise<Record<string, McpServerConfig>> {
+  return fetchPluginServers(plugin, getAccessToken, getMachineId, {
+    bestEffortToken,
+    createClient: createDashboardClient,
+    timeoutMs: CURSOR_MARKETPLACE_REQUEST_TIMEOUT_MS,
+    rememberPluginLogoUrl,
+    safeParseServer: (value) => {
+      if (!isObject(value)) return { success: false };
+      const normalized = normalizeServer(value);
+      if (typeof normalized.command === "string" && normalized.command.length > 0) {
+        return { success: true, data: normalized as McpServerConfig };
+      }
+      if (typeof normalized.url === "string" && normalized.url.length > 0) {
+        return { success: true, data: normalized as McpServerConfig };
+      }
+      return { success: false };
+    },
+    fetch: (url, signal) => fetchImpl(url, { signal }),
+    fetchTimeoutMs: 15_000,
+  });
+}
+
 export async function fetchPluginServers(
   plugin: SandMarketplacePlugin,
   getAccessToken: unknown,

@@ -31,13 +31,23 @@ test("self-host docker recipe matches the local VM image and publishes 0.0.0.0",
   const args = box.selfHostDockerRunArgs({ token: "a".repeat(32), gatewayPort: 1340, remoteRoot: box.selfHostRemoteRoot("/home/alice") });
   assert.equal(box.selfHostRemoteRoot("/home/alice"), "/home/alice/openbot-box");
   assert.ok(args.some((part) => part.includes("src=/home/alice/openbot-box/host-main.cjs")));
-  assert.equal(args.includes("--publish"), true);
-  assert.ok(args.includes("0.0.0.0:1340:1340"));
+  assert.equal(args.includes("--network"), true);
+  assert.ok(args.includes("host"));
+  assert.equal(args.includes("--publish"), false);
   assert.ok(args.includes("SAND_GATEWAY_BIND_HOST=0.0.0.0") || args.includes("--env") && args.some((part) => part === "SAND_GATEWAY_BIND_HOST=0.0.0.0"));
   assert.ok(args.includes("SAND_GATEWAY_TOKEN=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") || args.some((part) => part.startsWith("SAND_GATEWAY_TOKEN=")));
   assert.equal(box.SELF_HOST_BOX_CONTAINER, "openbot-self-host");
+  assert.equal(box.BOX_CONTAINER_DATA_ROOT, "/home/box/sand-data");
+  assert.ok(args.includes(`SAND_DATA_ROOT=${box.BOX_CONTAINER_DATA_ROOT}`));
+  assert.ok(args.includes(`openbot-self-host-data:${box.BOX_CONTAINER_DATA_ROOT}`));
+  assert.ok(args.includes("HTTP_PROXY="));
+  assert.ok(args.includes("HTTPS_PROXY="));
+  assert.ok(args.includes("NO_PROXY=*"));
+  assert.doesNotMatch(args.join("\n"), /openbot-self-host-data:\/home\/box\/openbot-data/);
   const oneLiner = box.selfHostOneLiner({ token: "a".repeat(32), gatewayPort: 1340 });
   assert.match(oneLiner, /^sh -c /);
+  assert.match(oneLiner, /image inspect/);
+  assert.match(oneLiner, /Image already on this machine/);
   assert.match(oneLiner, /Pulling image/);
   assert.match(oneLiner, /\$DOCKER pull /);
   assert.match(oneLiner, /Starting container/);
@@ -45,6 +55,8 @@ test("self-host docker recipe matches the local VM image and publishes 0.0.0.0",
   assert.match(oneLiner, /\$\{HOME\}\/openbot-box/);
   assert.doesNotMatch(oneLiner, /\/opt\/openbot-box/);
   assert.match(oneLiner, /This user cannot run Docker/);
+  assert.match(oneLiner, /'NO_PROXY=\*'/);
+  assert.match(oneLiner, /'HTTP_PROXY='/);
 });
 
 test("self-host gateway credentials persist next to settings with mode 0600", async () => {
@@ -54,13 +66,23 @@ test("self-host gateway credentials persist next to settings with mode 0600", as
   const stored = await credentials.writeSelfHostGateway(settingsPath, {
     gatewayUrl: "http://192.168.1.10:1340",
     token: "b".repeat(32),
+    host: "192.168.1.10",
+    username: "alice",
+    sshPort: 22,
+    gatewayPort: 1340,
   });
   assert.equal(stored.gatewayUrl, "http://192.168.1.10:1340");
+  assert.equal(stored.host, "192.168.1.10");
+  assert.equal(stored.username, "alice");
   const mode = (await stat(credentials.selfHostCredentialPath(settingsPath))).mode & 0o777;
   assert.equal(mode, 0o600);
   const loaded = await credentials.readSelfHostGateway(settingsPath);
   assert.ok(loaded);
   assert.equal(loaded.token, "b".repeat(32));
+  assert.equal(loaded.host, "192.168.1.10");
+  assert.equal(loaded.username, "alice");
+  assert.equal(loaded.sshPort, 22);
+  assert.equal(loaded.gatewayPort, 1340);
 });
 
 test("self-host SSH uses ssh2 and keeps errors short", async () => {
@@ -73,6 +95,7 @@ test("self-host SSH uses ssh2 and keeps errors short", async () => {
   assert.match(source, /Wrong username, password, or key\./);
   assert.match(source, /Host key changed\./);
   assert.match(source, /onOutput/);
+  assert.match(source, /timeoutMs/);
   assert.doesNotMatch(source, /spawn\(|execFile\(|\/usr\/bin\/ssh|child_process/);
 });
 
@@ -113,4 +136,11 @@ test("main edge and capability table serve the self-host RPCs", async () => {
   assert.match(connector, /SandNoServerConfiguredError/);
   assert.match(connector, /peekAccessToken/);
   assert.match(connector, /GATEWAY_NO_SERVER_MESSAGE_MARKER/);
+  const selfHostEdge = await readFile(path.join(repoRoot, "source/electron-main/box/self-host-edge.ts"), "utf8");
+  assert.match(selfHostEdge, /status: gatewayUrl\.length === 0 \? "missing"/);
+  assert.match(selfHostEdge, /probeGateway/);
+  assert.doesNotMatch(selfHostEdge, /extraCredential/);
+  const migration = await readFile(path.join(repoRoot, "source/electron-main/startup/startup-data-root-migration.ts"), "utf8");
+  assert.match(migration, /join\(homeDir, "\.grokbot"\)/);
+  assert.match(migration, /self-host-gateway\.json/);
 });

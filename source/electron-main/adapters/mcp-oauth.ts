@@ -138,6 +138,7 @@ export function createProductionMcpOAuthRootPortProvider(
         getMcpCustomInstructionsByServerId: () => settingsStore.getMcpCustomInstructionsByServerId(),
         getMcpCustomInstructions: () => settingsStore.getMcpCustomInstructions(),
         getMcpDisabledToolsByServerId: () => settingsStore.getMcpDisabledToolsByServerId(),
+        settingsPath: settingsStore.settingsPath,
       },
       wait: delay,
     },

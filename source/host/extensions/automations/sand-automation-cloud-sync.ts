@@ -361,6 +361,7 @@ export class SandAutomationCloudSync {
     readonly onRecovery: (agentId: string) => void;
     readonly onSchedulingAuthorityChanged: (agentId: string) => void;
     readonly reportDiagnostic?: (diagnostic: Record<string, unknown>) => void;
+    readonly useLocalCronClock?: () => boolean;
   }) {
     this.settings = { getUserTimeZone: deps.getTimeZone ?? (() => undefined) };
   }
@@ -368,6 +369,7 @@ export class SandAutomationCloudSync {
   setSettings(settings: { getUserTimeZone: () => string | undefined }): void { this.settings = settings; }
 
   shouldScheduleLocally({ agentId, automation }: { agentId: string; automation: { readonly id?: string; readonly trigger: AutomationTrigger } }): boolean {
+    if (this.deps.useLocalCronClock?.() === true && triggerListeners(automation.trigger).length === 0 && triggerCronSchedules(automation.trigger).length > 0) return true;
     if (!isServerSchedulable(automation)) return true;
     if (triggerListeners(automation.trigger).length === 0) return false;
     if (automation.id === undefined) return true;
@@ -422,6 +424,7 @@ export class SandAutomationCloudSync {
   }
 
   private async reconcile(): Promise<void> {
+    if (this.deps.useLocalCronClock?.() === true) return;
     if (!this.deps.hasCredential()) return;
     await this.retryPendingAgentDeletions();
     let scheduled: readonly { agentId: string; automation: ScheduledCloudAutomation }[];

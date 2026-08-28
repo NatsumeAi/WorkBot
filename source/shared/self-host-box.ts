@@ -1,7 +1,20 @@
 /** Same image string as LOCAL_DOCKER_BOX_IMAGE in local-docker-host-connector.ts. */
 export const SELF_HOST_BOX_IMAGE = "public.ecr.aws/k0i0n2g5/cursorenvironments/universal:sand-box-latest";
 export const SELF_HOST_BOX_CONTAINER = "openbot-self-host";
-export const SELF_HOST_SCHEMA_VERSION = "1";
+export const SELF_HOST_SCHEMA_VERSION = "2";
+/** Official image supervisor always writes here. Isolation is the volume name, not a second in-box path. */
+export const BOX_CONTAINER_DATA_ROOT = "/home/box/sand-data";
+export const BOX_DOCKER_HOST_GATEWAY_ARGS = ["--add-host", "host.docker.internal:host-gateway"] as const;
+export const BOX_DOCKER_PROXY_CLEAR_ARGS = [
+  "--env", "HTTP_PROXY=",
+  "--env", "HTTPS_PROXY=",
+  "--env", "http_proxy=",
+  "--env", "https_proxy=",
+  "--env", "ALL_PROXY=",
+  "--env", "all_proxy=",
+  "--env", "NO_PROXY=*",
+  "--env", "no_proxy=*",
+] as const;
 export const SELF_HOST_OWNER_LABEL = "com.openbot.self-host=1";
 export const SELF_HOST_REMOTE_DIRNAME = "openbot-box";
 export const SELF_HOST_DEFAULT_GATEWAY_PORT = 1340;
@@ -61,6 +74,7 @@ export function selfHostDockerRunArgs(params: SelfHostInstallParams & { readonly
     "--label", SELF_HOST_OWNER_LABEL,
     "--label", `com.openbot.self-host.schema-version=${SELF_HOST_SCHEMA_VERSION}`,
     "--platform", "linux/amd64", "--restart", "unless-stopped",
+    "--network", "host",
     "--env", "SAND_SUPERVISOR_ENABLED=1",
     "--env", "SAND_BOX_AUTO_UPDATE=0",
     "--env", "SAND_USE_EXISTING_BOX_EXEC_DAEMON=1",
@@ -68,12 +82,12 @@ export function selfHostDockerRunArgs(params: SelfHostInstallParams & { readonly
     "--env", "NODE_PATH=/home/box/deps",
     "--env", "SAND_GATEWAY_BIND_HOST=0.0.0.0",
     "--env", `SAND_HOST_PORT=${params.gatewayPort}`,
-    "--env", "SAND_DATA_ROOT=/home/box/openbot-data",
+    "--env", `SAND_DATA_ROOT=${BOX_CONTAINER_DATA_ROOT}`,
     "--env", `SAND_GATEWAY_TOKEN=${params.token}`,
+    ...BOX_DOCKER_PROXY_CLEAR_ARGS,
     ...tls,
-    "--publish", `0.0.0.0:${params.gatewayPort}:${params.gatewayPort}`,
     "--volume", "openbot-self-host-workspace:/workspace",
-    "--volume", "openbot-self-host-data:/home/box/openbot-data",
+    "--volume", `openbot-self-host-data:${BOX_CONTAINER_DATA_ROOT}`,
     "--mount", `type=bind,src=${selfHostRemoteHostMainPath(params.remoteRoot)},dst=/home/box/sand-host/host-main.cjs,readonly`,
     "--mount", `type=bind,src=${selfHostRemoteBoxExecDir(params.remoteRoot)},dst=/home/box/box-exec-daemon,readonly`,
     SELF_HOST_BOX_IMAGE,
@@ -108,8 +122,12 @@ export function selfHostInstallScript(params: SelfHostInstallParams): string {
     'mkdir -p "${ROOT}/box-exec-daemon"',
     'echo "Checking Docker…"',
     `$DOCKER rm --force ${shQuote(SELF_HOST_BOX_CONTAINER)} >/dev/null 2>&1 || true`,
-    'echo "Pulling image…"',
-    `$DOCKER pull ${shQuote(SELF_HOST_BOX_IMAGE)}`,
+    `if $DOCKER image inspect ${shQuote(SELF_HOST_BOX_IMAGE)} >/dev/null 2>&1; then`,
+    '  echo "Image already on this machine."',
+    "else",
+    '  echo "Pulling image (this can take several minutes)…"',
+    `  $DOCKER pull ${shQuote(SELF_HOST_BOX_IMAGE)}`,
+    "fi",
     'echo "Starting container…"',
     `$DOCKER ${quoted}`,
   ].join("\n");

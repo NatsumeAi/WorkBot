@@ -275,6 +275,17 @@ export function createSandAgentStaticConfig(
     backgroundSummarizationProps: {
       ...DEFAULT_BACKGROUND_SUMMARIZATION,
       ...input.backgroundSummarizationPropsOverride,
+      ...(input.backgroundSummarizationPropsOverride
+        ?.unusedPercentTokensThresholdToStartBackgroundSummarization == null
+        ? {}
+        : {
+            unusedTokensThresholdToStartBackgroundSummarization:
+              input.backgroundSummarizationPropsOverride
+                .unusedTokensThresholdToStartBackgroundSummarization,
+            unusedTokensThresholdToPersistBackgroundSummarization:
+              input.backgroundSummarizationPropsOverride
+                .unusedTokensThresholdToPersistBackgroundSummarization,
+          }),
     },
     ...(input.selfSummaryConfig === undefined
       ? {}

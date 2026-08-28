@@ -4,6 +4,11 @@ The Linux machine is the server. Every desktop app is a remote control of that
 box: HTTP commands plus live SSE, with a bearer token. Closing an app does not
 stop the box.
 
+The official box image writes data at `/home/box/sand-data`. OpenBot keeps that
+path and stores it in the Docker volume `openbot-self-host-data`, so it does not
+share Grok Bot's volume. Self-host uses Docker host networking so `127.0.0.1` in
+an API URL is this Linux machine (the same address you use outside the box).
+
 ## What the Settings form does
 
 Fill the Server tab, then **Install**. The app uses its own SSH client (not

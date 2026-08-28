@@ -14,6 +14,7 @@ node_modules/
 /.tmp*/
 /.grok-*/
 /.cursor/rules/baseline-architecture.mdc
+/.cursor/rules/openbot-fix-queue.mdc
 /.playwright-cli/
 /.tmp-*.mjs
 /frontend/.tmp-*/

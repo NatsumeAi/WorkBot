@@ -67,6 +67,8 @@ export const MAIN_METHOD_TABLE = {
   getInferenceRouter: { args: "none" },
   setInferenceRouter: { args: "object" },
   setInferenceEndpoints: { args: "object" },
+  getOutboundProxy: { args: "none" },
+  setOutboundProxy: { args: "object" },
   getBoxRuntime: { args: "none" },
   setBoxRuntime: { args: "object" },
   getSelfHostConnection: { args: "none" },

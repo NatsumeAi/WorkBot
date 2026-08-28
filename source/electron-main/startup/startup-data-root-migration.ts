@@ -29,6 +29,7 @@ export const SAND_ROOT_SIGNATURE_ENTRIES = new Set([
   "gateway.json",
   "host-secrets.json",
   "settings.json",
+  "self-host-gateway.json",
 ]);
 
 export type DataRootSettlement =
@@ -58,7 +59,10 @@ function attemptSync<T>(work: () => T): Attempt<T> {
   catch (error) { return { ok: false, error }; }
 }
 
+/** One leftover directory to rename into ~/.openbot. After that rename, this path is gone. */
 export function getLegacySandProductionRootDir(homeDir = homedir()): string {
+  const grokbot = join(homeDir, ".grokbot");
+  if (inspectDataRootDirectory(grokbot) === "directory") return grokbot;
   return join(homeDir, ".cursor", "sand");
 }
 

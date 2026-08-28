@@ -28,10 +28,11 @@ import {
   usageMetersFromSummary,
   type SettingsDesktopSnapshot
 } from "./desktop";
-import { GeneralSettingsPanel, RouterSettingsPanel, UpdatesSettingsPanel, UsageSettingsPanel } from "./panels";
+import { GeneralSettingsPanel, UpdatesSettingsPanel, UsageSettingsPanel } from "./panels";
+import { RouterSettingsPanel } from "./router-panel";
 import { ServerSettingsPanel } from "./server";
 import { SettingsModalShell, type SettingsSectionId } from "./view";
-import { DEFAULT_ROUTER_PROVIDER, loadRouterProvider, saveRouterProvider, type RouterProviderId } from "./router";
+import { DEFAULT_ROUTER_PROVIDER, isRouterProviderId, type RouterProviderId } from "./router";
 import type { AutoReviewSettings } from "./auto-review";
 import type { SettingsComputerMount } from "./computer";
 import { SettingsNoticeView, settingsNoticeFromEvent, type SettingsNotice } from "./notice";
@@ -137,8 +138,9 @@ export function SettingsDesktopSurface({ bridge, coordinatorClient = null, initi
   useEffect(() => {
     if (!isOpen) return;
     let active = true;
-    void loadRouterProvider(bridge.agent.clientPersistence).then((provider) => {
-      if (active) setRouterProvider(provider);
+    void bridge.agent.getInferenceRouter().then((result) => {
+      if (!active) return;
+      setRouterProvider(isRouterProviderId(result.provider) ? result.provider : DEFAULT_ROUTER_PROVIDER);
     }).catch(() => {
       if (active) setRouterProvider(DEFAULT_ROUTER_PROVIDER);
     });
@@ -252,13 +254,16 @@ export function SettingsDesktopSurface({ bridge, coordinatorClient = null, initi
         );
         if (section === "router") return (
           <RouterSettingsPanel
-            onChange={async (provider) => {
-              if (routerPending || provider === routerProvider) return;
+            agent={bridge.agent}
+            secrets={bridge.secrets}
+            onChange={async (next) => {
+              if (routerPending || next === routerProvider) return;
               const previous = routerProvider;
-              setRouterProvider(provider);
+              setRouterProvider(next);
               setRouterPending(true);
               try {
-                await saveRouterProvider(bridge.agent.clientPersistence, provider);
+                const saved = await bridge.agent.setInferenceRouter(next);
+                setRouterProvider(isRouterProviderId(saved.provider) ? saved.provider : next);
               } catch (reason) {
                 setRouterProvider(previous);
                 const message = reason instanceof Error ? reason.message : String(reason);

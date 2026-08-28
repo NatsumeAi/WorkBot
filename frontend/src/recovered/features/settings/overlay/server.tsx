@@ -32,22 +32,41 @@ export function ServerSettingsPanel({ agent }: ServerSettingsPanelProps) {
   const [oneLiner, setOneLiner] = useState("");
   const [envOverrides, setEnvOverrides] = useState(false);
   const [dockerUrl, setDockerUrl] = useState("https://docs.docker.com/engine/install/");
+  const [status, setStatus] = useState<"missing" | "saved" | "connected">("missing");
+  const [statusMessage, setStatusMessage] = useState("Not connected.");
+  const [hasToken, setHasToken] = useState(false);
+  const [proxyMode, setProxyMode] = useState<"off" | "custom">("off");
+  const [proxyUrl, setProxyUrl] = useState("");
+  const [proxyUsing, setProxyUsing] = useState(false);
+  const [proxyBusy, setProxyBusy] = useState(false);
+
+  const loadConnection = () => agent.getSelfHostConnection().then((connection) => {
+    setEnvOverrides(connection.envOverrides);
+    if (connection.gatewayUrl.length > 0) setAccessUrl(connection.gatewayUrl);
+    if (connection.host) setHost(connection.host);
+    if (connection.username) setUsername(connection.username);
+    setGatewayPort(String(connection.gatewayPort ?? connection.defaultGatewayPort));
+    setSshPort(String(connection.sshPort ?? connection.defaultSshPort));
+    setDockerUrl(connection.dockerInstallUrl);
+    setHasToken(connection.hasToken === true);
+    setStatus(connection.status ?? (connection.gatewayUrl ? "saved" : "missing"));
+    setStatusMessage(connection.statusMessage ?? (connection.gatewayUrl ? "Saved." : "Not connected."));
+  });
 
   useEffect(() => {
     let active = true;
-    void agent.getSelfHostConnection().then((connection) => {
-      if (!active) return;
-      setEnvOverrides(connection.envOverrides);
-      if (connection.gatewayUrl.length > 0) setAccessUrl(connection.gatewayUrl);
-      setGatewayPort(String(connection.defaultGatewayPort));
-      setSshPort(String(connection.defaultSshPort));
-      setDockerUrl(connection.dockerInstallUrl);
-    }).catch((reason: unknown) => {
+    void loadConnection().catch((reason: unknown) => {
       if (active) setError(reason instanceof Error ? reason.message : String(reason));
     });
     const stop = agent.onSelfHostInstallProgress((payload) => {
       if (typeof payload.line === "string") setProgress(payload.line);
     });
+    void agent.getOutboundProxy().then((proxy) => {
+      if (!active) return;
+      setProxyMode(proxy.mode === "custom" ? "custom" : "off");
+      setProxyUrl(proxy.customUrl || "");
+      setProxyUsing(proxy.usingProxy === true);
+    }).catch(() => {});
     return () => { active = false; stop(); };
   }, [agent]);
 
@@ -106,6 +125,7 @@ export function ServerSettingsPanel({ agent }: ServerSettingsPanelProps) {
     setNotice("Installed.");
     setPassword("");
     setJumpPassword("");
+    await loadConnection();
   });
 
   return (
@@ -113,6 +133,7 @@ export function ServerSettingsPanel({ agent }: ServerSettingsPanelProps) {
       <section>
         <h3>Server</h3>
         {envOverrides ? <p className="sand-settings-field__hint">Environment variables are set on this computer, so they still win.</p> : null}
+        <p className="sand-settings-field__hint">{statusMessage}{hasToken ? " Token is saved on this computer." : ""}</p>
         <label title="Hostname or IP of the Linux box">
           <span>Server</span>
           <input aria-label="Server" onChange={(event) => setHost(event.currentTarget.value)} value={host} />
@@ -170,7 +191,7 @@ export function ServerSettingsPanel({ agent }: ServerSettingsPanelProps) {
         </label>
         <label>
           <span>Token</span>
-          <input aria-label="Token" onChange={(event) => setToken(event.currentTarget.value)} type="password" value={token} />
+          <input aria-label="Token" onChange={(event) => setToken(event.currentTarget.value)} placeholder={hasToken ? "Saved" : undefined} type="password" value={token} />
         </label>
         {confirm ? (
           <div className="sand-settings-row">
@@ -182,25 +203,62 @@ export function ServerSettingsPanel({ agent }: ServerSettingsPanelProps) {
           </div>
         ) : null}
         <div className="sand-usage-actions">
-          <SandButton disabled={busy} onClick={() => void install(confirm != null)} size="md" variant="primary">{busy ? (progress || "Working…") : "Install"}</SandButton>
+          <SandButton disabled={busy} onClick={() => void install(confirm != null)} size="md" variant="primary">{busy ? (progress || "Connecting…") : "Install"}</SandButton>
           <SandButton disabled={busy} onClick={() => void run(async () => {
             const saved = await agent.setSelfHostConnection({
               gatewayUrl: accessUrl.trim(),
+              host: host.trim(),
+              username: username.trim(),
+              port: Number(sshPort),
+              gatewayPort: Number(gatewayPort),
               ...(token.trim().length > 0 ? { token: token.trim() } : {}),
             });
             if (saved.hasToken !== true || saved.gatewayUrl.length === 0) {
-              setError("Enter an access URL and token.");
+              setError(saved.message ?? "Enter an access URL and token.");
               return;
             }
-            const tested = await agent.testSelfHostGateway({ gatewayUrl: saved.gatewayUrl, ...(token.trim().length > 0 ? { token: token.trim() } : {}) });
-            if (!tested.ok) { setError(tested.message); return; }
-            setNotice(tested.message);
+            setNotice(saved.statusMessage ?? "Saved.");
+            setStatus((saved.status as "missing" | "saved" | "connected") || "saved");
+            setStatusMessage(saved.statusMessage ?? "Saved.");
+            setHasToken(true);
+            if (saved.gatewayUrl) setAccessUrl(saved.gatewayUrl);
             setToken("");
           })} size="md" variant="secondary">Connect</SandButton>
         </div>
         <p><button className="sand-settings-docs-link" onClick={() => void agent.openSelfHostDocs()} type="button">Learn more</button></p>
+        {busy && progress ? <p className="sand-settings-field__hint">{progress}</p> : null}
         {error ? <p className="sand-account__error">{error}{error.includes("Docker") ? <> <a href={dockerUrl} rel="noreferrer" target="_blank">Docker install</a></> : null}</p> : null}
         {notice ? <p className="sand-settings-field__hint">{notice}</p> : null}
+      </section>
+      <section>
+        <h3>Outbound proxy</h3>
+        <p className="sand-settings-field__hint">Off is direct. Custom sends public APIs through the URL you paste. 127.0.0.1 is always direct.</p>
+        <label>
+          <span>Mode<small>{proxyMode === "custom" ? "Paste a proxy URL. 127.0.0.1 stays direct." : "Direct. Local 127 APIs work without a proxy."}</small></span>
+          <select aria-label="Outbound proxy mode" onChange={(event) => setProxyMode(event.currentTarget.value === "custom" ? "custom" : "off")} value={proxyMode}>
+            <option value="off">Off</option>
+            <option value="custom">Custom URL</option>
+          </select>
+        </label>
+        {proxyMode === "custom" ? (
+          <label title="http://host:port or http://user:pass@host:port">
+            <span>Proxy URL</span>
+            <input aria-label="Proxy URL" onChange={(event) => setProxyUrl(event.currentTarget.value)} value={proxyUrl} />
+          </label>
+        ) : null}
+        <SandButton disabled={busy || proxyBusy} onClick={() => void run(async () => {
+          setProxyBusy(true);
+          try {
+            const saved = await agent.setOutboundProxy({ mode: proxyMode === "custom" ? "custom" : "off", customUrl: proxyUrl || "" });
+            setProxyMode(saved.mode === "custom" ? "custom" : "off");
+            setProxyUrl(saved.customUrl || "");
+            setProxyUsing(saved.usingProxy === true);
+            setNotice(saved.usingProxy ? "Outbound proxy is on. 127.0.0.1 stays direct." : "Outbound proxy is off.");
+          } finally {
+            setProxyBusy(false);
+          }
+        })} size="sm" variant="primary">{proxyBusy ? "Saving…" : "Save proxy"}</SandButton>
+        {proxyUsing ? <p className="sand-settings-field__hint">Using proxy.</p> : null}
       </section>
       <section>
         <h3>Advanced</h3>

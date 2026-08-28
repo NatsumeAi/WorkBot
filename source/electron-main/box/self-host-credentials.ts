@@ -9,6 +9,10 @@ export interface SelfHostGatewayRecord {
   readonly gatewayUrl: string;
   readonly token: string;
   readonly networkToken?: string;
+  readonly host?: string;
+  readonly username?: string;
+  readonly sshPort?: number;
+  readonly gatewayPort?: number;
 }
 
 export interface SelfHostKnownHostRecord {
@@ -40,6 +44,37 @@ export function newSelfHostToken(): string {
   return randomBytes(32).toString("hex");
 }
 
+function optionalText(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function optionalPort(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    const parsed = Number.parseInt(value, 10);
+    if (parsed > 0) return parsed;
+  }
+  return undefined;
+}
+
+function profileFields(value: {
+  readonly host?: unknown;
+  readonly username?: unknown;
+  readonly sshPort?: unknown;
+  readonly gatewayPort?: unknown;
+}): Pick<SelfHostGatewayRecord, "host" | "username" | "sshPort" | "gatewayPort"> {
+  const host = optionalText(value.host);
+  const username = optionalText(value.username);
+  const sshPort = optionalPort(value.sshPort);
+  const gatewayPort = optionalPort(value.gatewayPort);
+  return {
+    ...(host == null ? {} : { host }),
+    ...(username == null ? {} : { username }),
+    ...(sshPort == null ? {} : { sshPort }),
+    ...(gatewayPort == null ? {} : { gatewayPort }),
+  };
+}
+
 async function writeSecretJson(target: string, value: unknown): Promise<void> {
   await mkdir(dirname(target), { recursive: true });
   const temporary = `${target}.${process.pid}.tmp`;
@@ -55,6 +90,10 @@ export async function readSelfHostGateway(settingsPath: string): Promise<SelfHos
       gatewayUrl?: unknown;
       token?: unknown;
       networkToken?: unknown;
+      host?: unknown;
+      username?: unknown;
+      sshPort?: unknown;
+      gatewayPort?: unknown;
     };
     if (parsed.schemaVersion !== 1) return null;
     if (typeof parsed.gatewayUrl !== "string" || parsed.gatewayUrl.trim().length === 0) return null;
@@ -64,6 +103,7 @@ export async function readSelfHostGateway(settingsPath: string): Promise<SelfHos
       gatewayUrl: parsed.gatewayUrl.trim(),
       token: parsed.token,
       ...(typeof parsed.networkToken === "string" && parsed.networkToken.length > 0 ? { networkToken: parsed.networkToken } : {}),
+      ...profileFields(parsed),
     };
   } catch {
     return null;
@@ -76,6 +116,7 @@ export async function writeSelfHostGateway(settingsPath: string, record: Omit<Se
     gatewayUrl: record.gatewayUrl.trim(),
     token: record.token,
     ...(record.networkToken != null && record.networkToken.length > 0 ? { networkToken: record.networkToken } : {}),
+    ...profileFields(record),
   };
   await writeSecretJson(selfHostCredentialPath(settingsPath), stored);
   return stored;

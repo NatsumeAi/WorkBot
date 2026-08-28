@@ -28,13 +28,14 @@ test("OpenBot production and box data roots are not Grok Bot paths", async () =>
     SAND_DATA_DIRNAME,
     SAND_BOX_DATA_ROOT,
     getSandProductionRootDir,
+    getSandRootDir,
   } = await load();
   assert.equal(SAND_PRODUCTION_DATA_DIRNAME, ".openbot");
   assert.equal(SAND_DATA_DIRNAME, "openbot-data");
-  assert.equal(SAND_BOX_DATA_ROOT, "/home/box/openbot-data");
+  assert.equal(SAND_BOX_DATA_ROOT, "/home/box/sand-data");
   assert.equal(getSandProductionRootDir("/home/someone"), "/home/someone/.openbot");
   assert.equal(path.basename(getSandProductionRootDir(homedir())), ".openbot");
   assert.notEqual(SAND_PRODUCTION_DATA_DIRNAME, ".grokbot");
   assert.notEqual(SAND_DATA_DIRNAME, "sand-data");
-  assert.notEqual(SAND_BOX_DATA_ROOT, "/home/box/sand-data");
+  assert.equal(getSandRootDir("/home/someone"), "/home/someone/.openbot");
 });

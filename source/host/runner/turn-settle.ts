@@ -40,6 +40,12 @@ export type ProfilePromptSnapshot = AgentProfilePromptSnapshot;
 export interface TurnSettleHost {
   readonly isSubagentRunner: boolean;
   readonly transcriptMirror?: {
+    recover?(
+      context: unknown,
+      transcriptId: string,
+      checkpoint: TurnCheckpoint,
+      blobStore: unknown,
+    ): Promise<void>;
     prepareCheckpoint(
       context: unknown,
       transcriptId: string,
@@ -178,6 +184,8 @@ export function createTurnSettle(
 
   let observedSummaryArchiveCount = 0;
   let transcriptPersistenceEnabled = true;
+  let journalRecovered = false;
+  let recoverCheckpoint: TurnCheckpoint | undefined;
   let tokenDetailsPersistenceState:
     | { readonly kind: "fresh" }
     | {
@@ -192,6 +200,8 @@ export function createTurnSettle(
   ): void {
     observedSummaryArchiveCount = baseState.summaryArchives.length;
     transcriptPersistenceEnabled = enableTranscriptPersistence;
+    recoverCheckpoint = baseState;
+    journalRecovered = false;
   }
 
   function prepareCheckpointForPersistence(
@@ -239,6 +249,15 @@ export function createTurnSettle(
       : undefined;
 
     if (preparedTranscriptMirror != null) {
+      if (!journalRecovered && typeof preparedTranscriptMirror.recover === "function") {
+        await preparedTranscriptMirror.recover(
+          context,
+          host.getTranscriptId(),
+          recoverCheckpoint ?? checkpoint,
+          host.getBlobStore(),
+        );
+        journalRecovered = true;
+      }
       await preparedTranscriptMirror.prepareCheckpoint(
         context,
         host.getTranscriptId(),

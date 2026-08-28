@@ -2,14 +2,18 @@ import { join } from "node:path";
 import { createRealPollingPolicy } from "../../../internal/scheduling.js";
 import { defineHostExtension } from "../../../internal/host-extensions.js";
 import { getConfiguredBackendUrl } from "../../../shared/node/cursor-token.js";
+import { usesLocalInferenceClock } from "../../../shared/inference-router.js";
+import { SandSettingsStore } from "../../../shared/node/settings/sand-settings-store.js";
 import { AutomationsService } from "../../../packages/proto/generated/aiserver/v1/automations_connect.js";
 import { createSandCursorBackendClient } from "../../../shared/node/cursor-backend/cursor-inference.js";
 import { inspectAgentAutomationDefinitions } from "../../automations/automation-store.js";
+import { getSandRootDir } from "../../host-paths.js";
 import { getSandAgentsRootDir } from "../../storage/agent-paths.js";
 import { HostExtensions } from "../extension-ids.generated.js";
 import { createBackendRelaySources } from "./backend-relay-source.js";
 import { ListenerConnectWatcher } from "./listener-connect-watcher.js";
 import { createListenerIntegrationReads } from "./listener-integrations.js";
+import { LocalCronScheduler } from "./local-cron-scheduler.js";
 import { SandAutomationCloudSync, type CloudSyncClient, type ScheduledCloudAutomation } from "./sand-automation-cloud-sync.js";
 import { SandAutomationFireConsumer } from "./sand-automation-fire-consumer.js";
 import { SandTriggerHub } from "./sand-trigger-hub.js";
@@ -49,6 +53,10 @@ export const automationsExtension = defineHostExtension({
     };
     const routineSyncFailureTrayIds = new Map<string, string>();
     let notifySchedulingAuthorityChanged = () => {};
+    const useLocalCronClock = (): boolean => {
+      const store = new SandSettingsStore(join(getSandRootDir(), "settings.json"));
+      return usesLocalInferenceClock(store.getInferenceProvider(), store.getInferenceEndpoints());
+    };
     const cloudSyncOptions: ConstructorParameters<typeof SandAutomationCloudSync>[0] & {
       inspectLocalDefinitions(agentId: string): ReturnType<typeof inspectAgentAutomationDefinitions>;
       reportShadowPrune(report: Record<string, unknown>): void;
@@ -66,22 +74,42 @@ export const automationsExtension = defineHostExtension({
       reportShadowPrune: (report: Record<string, unknown>) => deps.telemetry.logs.reportAutomationShadowPrune({ ...report, boxUptimeMs: getBoxUptimeMs() }),
       onFailure: ({ agentId }) => { if (agentId == null || routineSyncFailureTrayIds.has(agentId)) return; const tray = deps.trays.pushError({ agentId, title: "Routine Sync Failed", detail: "Grok Bot couldn't sync this agent's routines. Event routines keep running locally when safe, but scheduled routines may be delayed while Grok Bot retries." }); routineSyncFailureTrayIds.set(agentId, tray.id); },
       onRecovery: (agentId) => { const id = routineSyncFailureTrayIds.get(agentId); if (id == null) return; deps.trays.dismiss({ id }); routineSyncFailureTrayIds.delete(agentId); },
-      onSchedulingAuthorityChanged: () => notifySchedulingAuthorityChanged()
+      onSchedulingAuthorityChanged: () => notifySchedulingAuthorityChanged(),
+      useLocalCronClock,
     };
     const cloudSync = new SandAutomationCloudSync(cloudSyncOptions);
     const relay = createBackendRelaySources({ getAccessToken: deps.auth.getAccessToken, getBackendUrl: () => getConfiguredBackendUrl(), polling: createRealPollingPolicy({ name: "automations.relay-poll", intervalMs: RELAY_POLL_INTERVAL_MS }), isNotifyConnected: () => deps["notify-bus"].isConnected(), isNotifySafetyPollEnabled: () => deps["notify-bus"].isSafetyPollEnabled() });
     const fireConsumer = new SandAutomationFireConsumer({ getAccessToken: deps.auth.getAccessToken, getBackendUrl: () => getConfiguredBackendUrl(), getTimeZone: () => deps.settings.getUserTimeZone(), getBoxUptimeMs, isReady: () => deps["turn-execution"].isRunReady(), listAutomations: () => deps.transcript.listAllAutomationDefinitions(), fire: (args) => deps.transcript.runServerScheduledAutomation(args), fireForEvent: (args) => deps.transcript.runServerAutomationForEvent(args), telemetry: deps.telemetry.brain, isNotifyConnected: () => deps["notify-bus"].isConnected(), isNotifySafetyPollEnabled: () => deps["notify-bus"].isSafetyPollEnabled() });
     context.onStop(deps["notify-bus"].onNotify("automation-fires", () => fireConsumer.requestDrain()));
     context.onStop(deps["notify-bus"].onNotify("listener-events", () => relay.requestDrain()));
-    const hub = new SandTriggerHub({ polling: createRealPollingPolicy({ name: "automations.hub-reconcile", intervalMs: HUB_RECONCILE_INTERVAL_MS }), sources: [relay.slack, relay.github], listAutomations: () => deps.transcript.listAllAutomationDefinitions(), fire: (agentId, automation, event) => deps.transcript.runAutomationForEvent(agentId, automation as ScheduledCloudAutomation, event), isReady: () => deps["turn-execution"].isRunReady(), shouldScheduleLocally: (agentId, automation) => cloudSync.shouldScheduleLocally({ agentId, automation }), onReconcile: () => { void cloudSync.reconcileNow(); void fireConsumer.tick(); } });
+    const localCron = new LocalCronScheduler({
+      isLocalClock: useLocalCronClock,
+      isReady: () => deps["turn-execution"].isRunReady(),
+      listAutomations: () => deps.transcript.listAllAutomationDefinitions(),
+      fire: (args) => deps.transcript.runServerScheduledAutomation({
+        agentId: args.agentId,
+        automation: args.automation as ScheduledCloudAutomation,
+        runUuid: args.runUuid,
+        scheduledForMs: args.scheduledForMs,
+      }),
+    });
+    const hub = new SandTriggerHub({ polling: createRealPollingPolicy({ name: "automations.hub-reconcile", intervalMs: HUB_RECONCILE_INTERVAL_MS }), sources: [relay.slack, relay.github], listAutomations: () => deps.transcript.listAllAutomationDefinitions(), fire: (agentId, automation, event) => deps.transcript.runAutomationForEvent(agentId, automation as ScheduledCloudAutomation, event), isReady: () => deps["turn-execution"].isRunReady(), shouldScheduleLocally: (agentId, automation) => cloudSync.shouldScheduleLocally({ agentId, automation }), onReconcile: () => {
+      if (useLocalCronClock()) {
+        void localCron.tick();
+        return;
+      }
+      void cloudSync.reconcileNow();
+      void fireConsumer.tick();
+    } });
     notifySchedulingAuthorityChanged = () => { void hub.reconcileNow(); };
     const listenerReads = createListenerIntegrationReads({ auth: deps.auth, transcript: deps.transcript, sourceStatuses: () => hub.getSourceStatuses(), log: host.log });
     const watcher = new ListenerConnectWatcher({ polling: createRealPollingPolicy({ name: "automations.connect-watch", intervalMs: CONNECT_WATCH_POLL_INTERVAL_MS }), isPlatformConnected: listenerReads.isPlatformConnected, onConnected: (agentId, platform) => void deps.transcript.resumeAfterListenerConnect(agentId, platform) });
     const offConfigChanged = host.events.on("transcript.automation-config-changed", () => { fireConsumer.resetPollDelay(); void hub.reconcileNow(); });
     const offConnectCard = host.events.on("transcript.listener-connect-card", ({ agentId, platform }: { agentId: string; platform: "slack" | "github" }) => watcher.watch(agentId, platform));
     hub.start();
+    localCron.start();
     const stopAuth = reconcileWhenAuthenticated({ auth: deps.auth, reconcile: () => void hub.reconcileNow() });
-    context.onStop(async () => { stopAuth(); offConfigChanged(); offConnectCard(); watcher.dispose(); fireConsumer.stop(); await hub.stop(); });
-    return { sourceStatuses: () => hub.getSourceStatuses(), suspendWakes: async () => { watcher.suspend(); fireConsumer.stop(); await hub.stop(); }, resumeWakes: () => { watcher.resume(); hub.start(); fireConsumer.start(); }, deleteAgentSchedules: (agentId: string) => cloudSync.deleteAgent(agentId), reconcileNow: () => hub.reconcileNow(), getListenerIntegrations: () => listenerReads.getIntegrations(), getListenerConnectUrl: (platform: "slack" | "github") => listenerReads.getConnectUrl(platform), isListenerPlatformConnected: (platform: "slack" | "github") => listenerReads.isPlatformConnected(platform), getAgentChannels: (agentId: string) => listenerReads.getAgentChannels(agentId) };
+    context.onStop(async () => { stopAuth(); offConfigChanged(); offConnectCard(); watcher.dispose(); localCron.stop(); fireConsumer.stop(); await hub.stop(); });
+    return { sourceStatuses: () => hub.getSourceStatuses(), suspendWakes: async () => { watcher.suspend(); localCron.stop(); fireConsumer.stop(); await hub.stop(); }, resumeWakes: () => { watcher.resume(); hub.start(); fireConsumer.start(); localCron.start(); }, deleteAgentSchedules: (agentId: string) => cloudSync.deleteAgent(agentId), reconcileNow: () => hub.reconcileNow(), getListenerIntegrations: () => listenerReads.getIntegrations(), getListenerConnectUrl: (platform: "slack" | "github") => listenerReads.getConnectUrl(platform), isListenerPlatformConnected: (platform: "slack" | "github") => listenerReads.isPlatformConnected(platform), getAgentChannels: (agentId: string) => listenerReads.getAgentChannels(agentId) };
   }
 });

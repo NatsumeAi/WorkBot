@@ -179,6 +179,8 @@ function apiTurnTokenLimits(): {
   readonly backgroundSummarizationPropsOverride: {
     readonly unusedPercentTokensThresholdToStartBackgroundSummarization: number;
     readonly unusedPercentTokensThresholdToPersistBackgroundSummarization: number;
+    readonly unusedTokensThresholdToStartBackgroundSummarization: undefined;
+    readonly unusedTokensThresholdToPersistBackgroundSummarization: undefined;
   };
 } | undefined {
   const store = new SandSettingsStore(join(getSandRootDir(), "settings.json"));
@@ -190,6 +192,8 @@ function apiTurnTokenLimits(): {
     backgroundSummarizationPropsOverride: {
       unusedPercentTokensThresholdToStartBackgroundSummarization: unused ?? 0.25,
       unusedPercentTokensThresholdToPersistBackgroundSummarization: Math.max(0.02, (unused ?? 0.25) / 2),
+      unusedTokensThresholdToStartBackgroundSummarization: undefined,
+      unusedTokensThresholdToPersistBackgroundSummarization: undefined,
     },
   };
 }
@@ -1667,10 +1671,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         reportOutcome: report => {
           method(telemetry.brain ?? {}, "reportJournalOutcome")?.(report);
         },
-        isJournalEnabled: async () =>
-          await method(experiments, "checkGate")?.(
-            "sand_new_transcript_journal"
-          ) ?? false
+        isJournalEnabled: async () => false
       }) as TurnSettleHost["transcriptMirror"] | undefined;
       Object.assign(runnerOptions, {
         transcriptMirror: transcriptMirrorForTurn,
@@ -1829,6 +1830,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         };
       })();
 
+      let activeTurnEmit: ((update: { type: string; [key: string]: unknown }) => void) | undefined;
       const sendMessage = {
         getIngestAttachment: () => hooks.ingestAttachment,
         resolveCloudAgentTitle,
@@ -1836,11 +1838,12 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           ? {}
           : { readMediaDimensions }),
         onSendMessage: (message: Record<string, unknown>, timestampMs: number) => {
-          hooks.transport.onUpdate({
-            type: "send-message",
+          const update = {
+            type: "send-message" as const,
             message: { ...message, type: String(message.type ?? "text") },
             timestampMs,
-          });
+          };
+          (activeTurnEmit ?? ((next) => hooks.transport.onUpdate(next)))(update);
           return hooks.transport.lastSentMessageId?.();
         },
       };
@@ -2364,6 +2367,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       };
       runnerOptions.productionTurnRunShell = createProductionTurnRunShellHostInput({
         createAgentOwnerInput: ({ requestId, runOptions, context, cancelThisRun, emitUpdate }) => {
+          activeTurnEmit = emitUpdate;
           if (session.agentStore == null || typeof session.agentStore.getBlobStore !== "function") {
             throw new TypeError("production Agent blob store is not bound");
           }
@@ -2595,6 +2599,9 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         isAwaitingUserSelection: () => false,
         emitRunLifecycle: event => hooks.onRunLifecycle?.(event),
         emitUpdate: update => hooks.transport.onUpdate(update),
+        onRunUnwind: () => {
+          activeTurnEmit = undefined;
+        },
         ...(hooks.transport.lastReactionApplied === undefined
           ? {}
           : { lastReactionApplied: () => hooks.transport.lastReactionApplied?.() === true }),

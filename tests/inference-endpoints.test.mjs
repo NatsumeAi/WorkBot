@@ -21,16 +21,16 @@ async function load() {
   return import(`data:text/javascript;base64,${Buffer.from(file.text).toString("base64")}`);
 }
 
-test("endpoints JSON keeps secret names and rejects inline keys", async () => {
+test("endpoints JSON keeps secret names, key roster, and rejects inline keys", async () => {
   const {
     documentFromPreset,
     emptyInferenceEndpointsDocument,
     parseInferenceEndpointsDocument,
     publicInferenceEndpointsDocument,
   } = await load();
-  const openrouter = emptyInferenceEndpointsDocument();
-  assert.equal(openrouter.active, "openrouter");
-  assert.equal(openrouter.endpoints[0]?.apiKeySecret, "OPENROUTER_API_KEY");
+  const custom = emptyInferenceEndpointsDocument();
+  assert.equal(custom.active, "custom");
+  assert.equal(custom.endpoints[0]?.apiKeySecret, "CUSTOM_API_KEY");
   assert.equal(parseInferenceEndpointsDocument({ schemaVersion: 1, active: "openai", endpoints: [{ id: "openai", kind: "openai-compatible", baseURL: "https://api.openai.com/v1", apiKeySecret: "sk-live-not-a-name", model: "gpt-4o" }] }), undefined);
   assert.equal(parseInferenceEndpointsDocument({ schemaVersion: 1, active: "openai", apiKey: "sk-secret", endpoints: [{ id: "openai", kind: "openai-compatible", baseURL: "https://api.openai.com/v1", apiKeySecret: "OPENAI_API_KEY", model: "gpt-4o" }] }), undefined);
   assert.equal(parseInferenceEndpointsDocument({ schemaVersion: 1, active: "openai", endpoints: [{ id: "openai", kind: "openai-compatible", baseURL: "https://api.openai.com/v1", apiKey: "sk-secret", apiKeySecret: "OPENAI_API_KEY", model: "gpt-4o" }] }), undefined);
@@ -40,6 +40,25 @@ test("endpoints JSON keeps secret names and rejects inline keys", async () => {
   assert.equal(openai.endpoints[0]?.model, "gpt-5.6-sol");
   assert.equal(openai.endpoints[0]?.contextWindow, 1_050_000);
   assert.equal(openai.endpoints[0]?.reasoningEffort, "medium");
+  const roster = parseInferenceEndpointsDocument({
+    schemaVersion: 1,
+    active: "model-1",
+    keys: [{ id: "KEY_1", label: "Empero" }, { id: "KEY_2", label: "NewAPI" }],
+    endpoints: [
+      { id: "model-1", kind: "openai-compatible", baseURL: "https://a.example/v1", apiKeySecret: "KEY_1", model: "m1" },
+      { id: "model-2", kind: "openai-compatible", baseURL: "http://127.0.0.1:3000/v1", apiKeySecret: "KEY_2", model: "m2" },
+      { id: "model-3", kind: "openai-compatible", baseURL: "https://a.example/v1", apiKeySecret: "KEY_1", model: "m3" },
+    ],
+  });
+  assert.equal(roster?.keys?.length, 2);
+  assert.equal(roster?.endpoints.find((item) => item.id === "model-2")?.apiKeySecret, "KEY_2");
+  assert.equal(roster?.endpoints.filter((item) => item.apiKeySecret === "KEY_1").length, 2);
+  assert.equal(parseInferenceEndpointsDocument({
+    schemaVersion: 1,
+    active: "model-1",
+    keys: [{ id: "KEY_1", apiKey: "sk-secret" }],
+    endpoints: [{ id: "model-1", kind: "openai-compatible", baseURL: "https://a.example/v1", apiKeySecret: "KEY_1", model: "m1" }],
+  }), undefined);
 });
 
 test("catalog uses current 2026 model IDs", async () => {
@@ -53,8 +72,10 @@ test("catalog uses current 2026 model IDs", async () => {
   assert.equal(ids.includes("deepseek-chat"), false);
   assert.equal(ids.includes("llama-3.3"), false);
   const empty = emptyInferenceEndpointsDocument();
-  assert.equal(empty.endpoints[0]?.model, "openai/gpt-5.6-sol");
-  assert.equal(effectiveContextWindow(empty.endpoints[0]), 1_050_000);
+  assert.equal(empty.endpoints[0]?.id, "custom");
+  assert.equal(empty.endpoints[0]?.baseURL, "https://example.invalid/v1");
+  assert.equal(empty.endpoints[0]?.model, "model-id");
+  assert.equal(effectiveContextWindow(empty.endpoints[0]), 128_000);
   assert.equal(compactUnusedFraction(empty.endpoints[0]), 0.25);
   const tight = parseInferenceEndpointsDocument({
     schemaVersion: 1,
@@ -78,6 +99,14 @@ test("catalog uses current 2026 model IDs", async () => {
   assert.equal(compactUnusedFraction(tight.endpoints[0]), 0.1);
 });
 
+test("loopback API URLs rewrite to the Docker host only inside the box", async () => {
+  const { rewriteLoopbackBaseUrlForBoxHost } = await load();
+  assert.equal(rewriteLoopbackBaseUrlForBoxHost("http://127.0.0.1:3000/v1", false), "http://127.0.0.1:3000/v1");
+  assert.equal(rewriteLoopbackBaseUrlForBoxHost("http://127.0.0.1:3000/v1", true), "http://host.docker.internal:3000/v1");
+  assert.equal(rewriteLoopbackBaseUrlForBoxHost("http://localhost:3000/v1", true), "http://host.docker.internal:3000/v1");
+  assert.equal(rewriteLoopbackBaseUrlForBoxHost("https://openrouter.ai/api/v1", true), "https://openrouter.ai/api/v1");
+});
+
 test("preset documents round-trip", async () => {
   const { documentFromPreset, parseInferenceEndpointsDocument } = await load();
   const parsed = parseInferenceEndpointsDocument(JSON.stringify(documentFromPreset("deepseek")));
@@ -87,7 +116,7 @@ test("preset documents round-trip", async () => {
 });
 
 test("roles select chat, compact, and fallback endpoints", async () => {
-  const { parseInferenceEndpointsDocument, endpointForRole, distinctEndpointForRole } = await load();
+  const { parseInferenceEndpointsDocument, endpointForRole, distinctEndpointForRole, imageGenerationEndpoint, inferenceEndpointRoles } = await load();
   const document = parseInferenceEndpointsDocument({
     schemaVersion: 1,
     active: "chat",
@@ -108,6 +137,32 @@ test("roles select chat, compact, and fallback endpoints", async () => {
   });
   assert.equal(endpointForRole(legacy, "compact").id, "openrouter");
   assert.equal(distinctEndpointForRole(legacy, "fallback"), undefined);
+});
+
+test("image role is assigned from the pool and never falls back to the chat LLM", async () => {
+  const { parseInferenceEndpointsDocument, imageGenerationEndpoint, inferenceEndpointRoles, endpointForRole } = await load();
+  const unset = parseInferenceEndpointsDocument({
+    schemaVersion: 1,
+    active: "chat",
+    roles: { chat: "chat" },
+    endpoints: [
+      { id: "chat", kind: "openai-compatible", baseURL: "https://openrouter.ai/api/v1", apiKeySecret: "OPENROUTER_API_KEY", model: "openai/gpt-5.6-sol" },
+      { id: "image", kind: "openai-compatible", baseURL: "https://openrouter.ai/api/v1", apiKeySecret: "OPENROUTER_API_KEY", model: "openai/dall-e-3" },
+    ],
+  });
+  assert.equal(imageGenerationEndpoint(unset), undefined);
+  const assigned = parseInferenceEndpointsDocument({
+    schemaVersion: 1,
+    active: "chat",
+    roles: { chat: "chat", image: "image" },
+    endpoints: [
+      { id: "chat", kind: "openai-compatible", baseURL: "https://openrouter.ai/api/v1", apiKeySecret: "OPENROUTER_API_KEY", model: "openai/gpt-5.6-sol" },
+      { id: "image", kind: "openai-compatible", baseURL: "https://openrouter.ai/api/v1", apiKeySecret: "OPENROUTER_API_KEY", model: "openai/dall-e-3" },
+    ],
+  });
+  assert.equal(imageGenerationEndpoint(assigned)?.model, "openai/dall-e-3");
+  assert.equal(inferenceEndpointRoles(assigned).image, "image");
+  assert.notEqual(imageGenerationEndpoint(assigned)?.model, endpointForRole(assigned, "chat").model);
 });
 
 test("fallback chain tries listed endpoints in order", async () => {

@@ -26,6 +26,13 @@ export class SandMcpCatalogFlow {
         includesPrivateMarketplaces: boolean;
       }>;
       resolveLogo?(url: string): Promise<unknown>;
+      fetchPluginServers?: (
+        plugin: SandMarketplacePlugin,
+        token: unknown,
+        getMachineId: unknown,
+      ) => Promise<Record<string, import("./mcp-display-runtime.js").McpServerConfig>>;
+      settingsPath?: string;
+      settingsStore?: { readonly settingsPath?: string };
       now?: () => number;
     },
   ) {}
@@ -123,12 +130,22 @@ export class SandMcpCatalogFlow {
         );
       } catch {}
     if (!teamKnown) this.assertRequired(plugin, request.values ?? {});
-    await this.core
-      .requireAccountWriter()
-      .installPlugin({
-        pluginId: BigInt(plugin.pluginId),
-        ...(request.values == null ? {} : { variables: request.values }),
-      });
+    const marketplace = await import("./mcp-marketplace.js");
+    const bestEffort = this.core.bestEffortToken ?? marketplace.bestEffortToken;
+    const { installFromCatalog } = await import("./local-mcp-installs.js");
+    await installFromCatalog({
+      plugin,
+      values: request.values,
+      token,
+      core: {
+        bestEffortToken: bestEffort,
+        requireAccountWriter: () => this.core.requireAccountWriter(),
+        getMachineId: this.core.getMachineId,
+        fetchPluginServers: this.core.fetchPluginServers ?? marketplace.fetchPluginServersForInstall,
+        ...(this.core.settingsPath == null ? {} : { settingsPath: this.core.settingsPath }),
+        ...(this.core.settingsStore == null ? {} : { settingsStore: this.core.settingsStore }),
+      },
+    });
     return this.core.reloadServers();
   }
   async updatePluginInstall(

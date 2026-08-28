@@ -11,8 +11,8 @@ import { SandBoxStoreSyncError } from "./box-store-sync-error.js";
 import type { StoreDbCaptureTrace } from "./store-db-bundle-capture.js";
 
 export const AGENT_STORE_DB_BASENAMES = ["store.db", "conversation-blobs.db"] as const;
-export const STORE_DB_MANIFEST_KEY_RE = /^home\/box\/openbot-data\/agents\/([^/]+)\/store\.db$/;
-export const AGENT_DIR_MANIFEST_KEY_RE = /^home\/box\/openbot-data\/agents\/([^/]+)\//;
+export const STORE_DB_MANIFEST_KEY_RE = /^home\/box\/sand-data\/agents\/([^/]+)\/store\.db$/;
+export const AGENT_DIR_MANIFEST_KEY_RE = /^home\/box\/sand-data\/agents\/([^/]+)\//;
 export type BoxManifestMap = Map<string, BoxStoreManifestEntry>;
 
 export function countStoreDbManifestEntries(manifest: ReadonlyMap<string, unknown> | null | undefined): number {

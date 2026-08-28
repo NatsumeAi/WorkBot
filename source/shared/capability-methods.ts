@@ -20,6 +20,8 @@ const MAIN_CAPABILITY: Partial<Record<MainMethod, SandCapability>> = {
   getInferenceRouter: "inferenceRouter",
   setInferenceRouter: "inferenceRouter",
   setInferenceEndpoints: "inferenceRouter",
+  getOutboundProxy: "remoteBox",
+  setOutboundProxy: "remoteBox",
   listSecrets: "secrets",
   revealSecret: "secrets",
   upsertSecrets: "secrets",
