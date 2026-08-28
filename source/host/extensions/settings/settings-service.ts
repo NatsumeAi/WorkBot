@@ -62,14 +62,14 @@ export class SettingsService {
     if (update.pinnedAgentIds !== undefined) this.store.setPinnedAgentIds(update.pinnedAgentIds);
     if (update.sidebarSections !== undefined) this.store.setSidebarSections(update.sidebarSections);
     if (update.hasSeenOnboarding !== undefined) this.store.setHasSeenOnboarding(update.hasSeenOnboarding);
-    if (isSandInferenceProvider(update.inferenceProvider) && Object.keys(update).every((key) => key === "inferenceProvider" || key === "inferenceEndpoints" || key === "inferenceRouterUsage")) {
-      this.store.setInferenceProvider(resolveSandInferenceProvider(update.inferenceProvider, this.store.getInferenceEndpoints()));
-    }
     if (isSandOutboundProxyMode(update.outboundProxyMode)) this.store.setOutboundProxyMode(update.outboundProxyMode);
     if (typeof update.outboundProxyUrl === "string") this.store.setOutboundProxyUrl(update.outboundProxyUrl);
     {
       const endpoints = parseInferenceEndpointsDocument(update.inferenceEndpoints);
       if (endpoints != null) this.store.setInferenceEndpoints(mergePreservedSticky(endpoints, this.store.getInferenceEndpoints()));
+    }
+    if (isSandInferenceProvider(update.inferenceProvider)) {
+      this.store.setInferenceProvider(resolveSandInferenceProvider(update.inferenceProvider, this.store.getInferenceEndpoints()));
     }
     if (update.featureFlagOverrides !== undefined) for (const listener of [...this.featureFlagOverrideListeners]) listener(update.featureFlagOverrides);
     if (update.computerUseModel === null) this.store.setComputerUseModel(undefined); else if (isSandAgentModelSelection(update.computerUseModel)) this.store.setComputerUseModel(update.computerUseModel);

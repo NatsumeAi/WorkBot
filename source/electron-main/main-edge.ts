@@ -77,6 +77,24 @@ function themeController(deps: MainEdgeDeps) { return required(deps.readThemeCon
 function egressController(deps: MainEdgeDeps) { return required(deps.readEgressTunnelController, MAIN_EDGE_EGRESS_TUNNEL_UNAVAILABLE, "The egress tunnel controller is not running."); }
 function selfHost(deps: MainEdgeDeps) { return required(() => deps.selfHost ?? null, MAIN_EDGE_UNSERVED, "Self-host is not available."); }
 async function echo(deps: MainEdgeDeps, field: string, value: unknown, label: string): Promise<unknown> { const result = await deps.syncHostSettingsToBox({ [field]: value }); if (result == null) throw new SandHostSettingsUnreachableError(`Couldn't reach the computer to save ${label}.`); return result[field] ?? null; }
+function hasEndpointPool(value: unknown): value is { readonly endpoints: readonly unknown[] } {
+  return typeof value === "object" && value != null && Array.isArray((value as { endpoints?: unknown }).endpoints) && (value as { endpoints: unknown[] }).endpoints.length > 0;
+}
+function routerEndpoints(box: UnknownRecord, local: unknown) {
+  const parsed = parseInferenceEndpointsDocument(box.inferenceEndpoints) ?? (local == null ? undefined : parseInferenceEndpointsDocument(local));
+  const resolve = parsed ?? (hasEndpointPool(box.inferenceEndpoints) ? box.inferenceEndpoints : hasEndpointPool(local) ? local : null);
+  return { parsed: parsed ?? null, resolve };
+}
+async function loadInferenceRouter(deps: MainEdgeDeps) {
+  const settings = await deps.readHostSettingsFromBox().catch(() => ({} as UnknownRecord));
+  const endpoints = routerEndpoints(settings, invoke(deps.settingsStore, "getInferenceEndpoints"));
+  const provider = resolveSandInferenceProvider(settings.inferenceProvider, endpoints.resolve);
+  if (provider !== settings.inferenceProvider) {
+    invoke(deps.settingsStore, "setInferenceProvider", provider);
+    await deps.syncHostSettingsToBox({ inferenceProvider: provider }).catch(() => null);
+  }
+  return { settings, parsed: endpoints.parsed, resolve: endpoints.resolve, provider };
+}
 function computerUseModel(deps: MainEdgeDeps): unknown { const stored = invoke(deps.agentPrefsStore, "getComputerUseModel"); const override = deps.getComputerUseModelOverride(); return resolveComputerUseModelSelection({ ...(isSandAgentModelSelection(stored) ? { storedModel: stored } : {}), ...(isSandAgentModelSelection(override) ? { overrideModel: override } : {}) }) ?? null; }
 function parseAgentModel(value: unknown, requireNonWhitespaceId: boolean): { modelId: string; maxMode: boolean; parameters: { id: string; value: string }[] } | null {
   if (typeof value !== "object" || value == null || Array.isArray(value)) return null;
@@ -123,26 +141,19 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
     setHostSidebarSections: (raw) => echo(deps, "sidebarSections", req(raw).sections, "sidebar sections"),
     getAvailableModels: () => deps.fetchAvailableModels(),
     getInferenceRouter: async () => {
-      const settings = await deps.readHostSettingsFromBox().catch(() => ({} as UnknownRecord));
-      const fromBox = parseInferenceEndpointsDocument(settings.inferenceEndpoints);
-      const fromLocal = invoke(deps.settingsStore, "getInferenceEndpoints") as ReturnType<typeof parseInferenceEndpointsDocument>;
-      const endpoints = fromBox ?? (fromLocal == null ? null : parseInferenceEndpointsDocument(fromLocal));
-      const provider = resolveSandInferenceProvider(settings.inferenceProvider, endpoints);
+      const { settings, parsed, provider } = await loadInferenceRouter(deps);
       return {
         provider,
         usage: settings.inferenceRouterUsage ?? invoke(deps.settingsStore, "getInferenceRouterUsage") ?? null,
         local: getLocalInferenceCliStatus(),
-        endpoints: endpoints == null ? null : publicInferenceEndpointsDocument(endpoints),
+        endpoints: parsed == null ? null : publicInferenceEndpointsDocument(parsed),
       };
     },
     setInferenceRouter: async (raw) => {
       const requested = req(raw).provider;
       invariant(isSandInferenceProvider(requested), "Unknown inference provider.");
-      const boxSettings = await deps.readHostSettingsFromBox().catch(() => ({} as UnknownRecord));
-      const fromBox = parseInferenceEndpointsDocument(boxSettings.inferenceEndpoints);
-      const fromLocal = invoke(deps.settingsStore, "getInferenceEndpoints") as ReturnType<typeof parseInferenceEndpointsDocument>;
-      const endpoints = fromBox ?? (fromLocal == null ? null : parseInferenceEndpointsDocument(fromLocal));
-      const provider = resolveSandInferenceProvider(requested, endpoints);
+      const loaded = await loadInferenceRouter(deps);
+      const provider = resolveSandInferenceProvider(requested, loaded.resolve);
       invoke(deps.settingsStore, "setInferenceProvider", provider);
       const settings = await deps.syncHostSettingsToBox({ inferenceProvider: provider }).catch(() => null);
       return { provider, usage: settings?.inferenceRouterUsage ?? invoke(deps.settingsStore, "getInferenceRouterUsage") ?? null, local: getLocalInferenceCliStatus() };

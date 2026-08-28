@@ -104,6 +104,8 @@ test("source desktop reads box provider and defaults to API", async () => {
   const panel = await readFile(path.join(repoRoot, "frontend/src/recovered/features/settings/overlay/router-panel.tsx"), "utf8");
   assert.equal(main.includes('inferenceProvider ?? "cursor"'), false);
   assert.match(main, /settings\.inferenceProvider/);
+  assert.match(main, /resolveSandInferenceProvider\(requested, loaded\.resolve\)/);
+  assert.match(main, /provider !== settings\.inferenceProvider/);
   assert.match(router, /value === "cursor" && Array\.isArray\(endpoints\?\.endpoints\)/);
   assert.match(settle, /typeof preparedTranscriptMirror\.recover === "function"/);
   assert.match(composition, /isJournalEnabled: async \(\) => false/);
@@ -116,9 +118,108 @@ test("source desktop reads box provider and defaults to API", async () => {
   const imageGen = await readFile(path.join(repoRoot, "source/host/extensions/inference/api-generate-image.ts"), "utf8");
   assert.doesNotMatch(imageGen, /process\.env\[name\]/);
   assert.match(cursorSession, /hostInferenceCanRunWithoutCursor\(\)/);
-  assert.match(settings, /key === "inferenceProvider" \|\| key === "inferenceEndpoints"/);
+  assert.match(settings, /isSandInferenceProvider\(update\.inferenceProvider\)/);
+  assert.equal(settings.includes('Object.keys(update).every'), false);
   assert.match(panel, /value: "openrouter", label: "API"/);
+  const stagedMain = "/tmp/openbot-asar-sync/linux/dist/electron-main/main.cjs";
+  const staged = await readFile(stagedMain, "utf8");
+  assert.match(staged, /const requested = req\(raw\)\.provider/);
+  assert.match(staged, /if \(provider === "cursor" && resolveWith != null\) provider = "openrouter"/);
+  assert.match(staged, /provider !== settings\.inferenceProvider/);
 });
+
+const POOL = {
+  schemaVersion: 1,
+  active: "model-1",
+  endpoints: [{
+    id: "model-1",
+    kind: "openai-compatible",
+    baseURL: "http://127.0.0.1:3000/v1",
+    model: "deepseek-v4-pro",
+    apiKeySecret: "CUSTOM_API_KEY",
+  }],
+};
+
+test("reopening settings after a Cursor write still reports API when a pool exists", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "openbot-provider-revert-"));
+  const settingsPath = path.join(dir, "settings.json");
+  const serviceBundle = await build({
+    absWorkingDir: repoRoot,
+    bundle: true,
+    entryPoints: ["source/host/extensions/settings/settings-service.ts"],
+    format: "esm",
+    platform: "node",
+    write: false,
+  });
+  const serviceFile = serviceBundle.outputFiles[0];
+  if (serviceFile == null) throw new Error("esbuild produced no settings service bundle");
+  const { SettingsService } = await import(`data:text/javascript;base64,${Buffer.from(serviceFile.text).toString("base64")}`);
+  const service = new SettingsService(settingsPath);
+  service.setHostSettings({ inferenceProvider: "openrouter", inferenceEndpoints: POOL });
+  service.setHostSettings({ inferenceProvider: "cursor", localToolPermission: "ask" });
+  assert.equal(service.getHostSettings().inferenceProvider, "openrouter");
+  const raw = JSON.parse(await readFile(settingsPath, "utf8"));
+  assert.equal(raw.inferenceProvider, "openrouter");
+
+  const edgeBundle = await build({
+    absWorkingDir: repoRoot,
+    bundle: true,
+    entryPoints: ["source/electron-main/main-edge.ts"],
+    format: "esm",
+    platform: "node",
+    write: false,
+  });
+  const edgeFile = edgeBundle.outputFiles[0];
+  if (edgeFile == null) throw new Error("esbuild produced no main-edge bundle");
+  const { createMainEdgeHandlers } = await import(`data:text/javascript;base64,${Buffer.from(edgeFile.text).toString("base64")}`);
+  let box = { inferenceProvider: "cursor", inferenceEndpoints: POOL, inferenceRouterUsage: null };
+  const synced = [];
+  const local = { inferenceProvider: "cursor", inferenceEndpoints: null };
+  const handlers = createMainEdgeHandlers({
+    readLiveUpdateService: () => null,
+    readThemeController: () => null,
+    readEgressTunnelController: () => null,
+    settingsStore: {
+      getInferenceEndpoints: () => local.inferenceEndpoints,
+      setInferenceProvider: (value) => { local.inferenceProvider = value; },
+      getInferenceRouterUsage: () => null,
+    },
+    agentPrefsStore: {},
+    boxToggleStore: {},
+    onboardingSeen: {},
+    shell: {},
+    boxRecovery: {},
+    windowChrome: {},
+    avatarImages: {},
+    attachments: {},
+    cursorAccount: {},
+    experiments: {},
+    syncHostSettingsToBox: async (update) => {
+      synced.push(update);
+      box = { ...box, ...update };
+      return box;
+    },
+    readHostSettingsFromBox: async () => box,
+    recordLocalToolApproval: async () => {},
+    clearLocalToolApprovals: async () => {},
+    getComputerUseModelOverride: () => null,
+    fetchAvailableModels: () => [],
+    emitEgressTunnelChanged: () => {},
+    emitWebauthnProxyChanged: () => {},
+    ensureTranscriptionManager: async () => ({}),
+    platform: "linux",
+  });
+  const opened = await handlers.getInferenceRouter({});
+  assert.equal(opened.provider, "openrouter");
+  assert.equal(synced.some((item) => item.inferenceProvider === "openrouter"), true);
+  const written = await handlers.setInferenceRouter({ provider: "cursor" });
+  assert.equal(written.provider, "openrouter");
+  const again = await handlers.getInferenceRouter({});
+  assert.equal(again.provider, "openrouter");
+  assert.equal(box.inferenceProvider, "openrouter");
+  assert.equal(local.inferenceProvider, "openrouter");
+});
+
 
 test("401, timeout, and fetch failed never retry another endpoint", async () => {
   const { isRetryableInferenceError } = await import(
