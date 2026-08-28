@@ -52,6 +52,8 @@ export class LocalCronScheduler {
         runUuid: string;
         scheduledForMs: number;
       }) => Promise<unknown>;
+      readonly getTimeZone?: () => string | undefined;
+      readonly now?: () => number;
       readonly intervalMs?: number;
     },
   ) {}
@@ -78,9 +80,10 @@ export class LocalCronScheduler {
     try {
       if (!await this.deps.isReady()) return;
       const listed = await this.deps.listAutomations();
-      const now = Date.now();
+      const now = (this.deps.now ?? Date.now)();
+      const timeZone = this.deps.getTimeZone?.();
       for (const { agentId, automation } of listed) {
-        if (!isDueLocalCron(automation, now)) continue;
+        if (!isDueLocalCron(automation, now, timeZone)) continue;
         const key = `${agentId}:${automation.id}`;
         if (this.inFlight.has(key)) continue;
         this.inFlight.add(key);
@@ -89,7 +92,7 @@ export class LocalCronScheduler {
             agentId,
             automation,
             runUuid: randomUUID(),
-            scheduledForMs: nextLocalCronAt(automation) ?? now,
+            scheduledForMs: nextLocalCronAt(automation, timeZone) ?? now,
           });
         } finally {
           this.inFlight.delete(key);

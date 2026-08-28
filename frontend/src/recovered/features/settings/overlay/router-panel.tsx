@@ -223,7 +223,7 @@ export function RouterSettingsPanel({ agent, secrets, pending = false, provider,
           <SandSelect
             ariaLabel="Routing provider"
             disabled={disabled}
-            menuSize="lg"
+            menuSize="md"
             onValueChange={(value) => { if (value != null && value !== provider) void onChange(value as RouterProviderId); }}
             options={ROUTER_OPTIONS}
             placement="bottom-end"
@@ -236,12 +236,12 @@ export function RouterSettingsPanel({ agent, secrets, pending = false, provider,
           <span>Use local Docker VM<small>{local ? "Shell, files and computer use run in a Docker container on this computer." : "Shell, files and computer use run on Grok Bot's remote computer."}</small></span>
           <button aria-checked={local} aria-label="Use local Docker VM" disabled={runtime.busy} onClick={() => void toggleRuntime()} role="switch" type="button">{local ? "On" : "Off"}</button>
         </label>
-        {runtime.error ? <p className="sand-account__error">{runtime.error}</p> : null}
+        {runtime.error ? <div className="sand-account__error">{runtime.error}</div> : null}
       </Group>
       {provider === "openrouter" ? (
         <>
           <Group title="Keys">
-            <p className="sand-settings-field__hint">A key is a named slot. Hundreds of models can share one key. Values are stored as JSON on the box.</p>
+            <div className="sand-settings-field__hint">A key is a named slot. Hundreds of models can share one key. Values are stored as JSON on the box.</div>
             {pool.keys.map((row) => (
               <label key={row.id}>
                 <span>{row.label || row.id}<small>{row.id}</small></span>
@@ -258,7 +258,7 @@ export function RouterSettingsPanel({ agent, secrets, pending = false, provider,
             })} size="sm" variant="secondary">Add key</SandButton>
           </Group>
           <Group title="Models">
-            <p className="sand-settings-field__hint">Saved on the box. Each model picks a key. Chat, compress and fallback pick from this pool.</p>
+            <div className="sand-settings-field__hint">Saved on the box. Each model picks a key. Chat, compress and fallback pick from this pool.</div>
             {pool.pool.map((slot) => (
               <label key={slot.id}>
                 <span>{slot.name || slot.model}<small>{slot.model} · {slot.baseURL}</small></span>
@@ -285,7 +285,7 @@ export function RouterSettingsPanel({ agent, secrets, pending = false, provider,
                 </label>
                 <label>
                   <span>Provider<small>Fills base URL and models. Edit the URL for a relay.</small></span>
-                  <SandSelect ariaLabel="API provider" menuSize="lg" onValueChange={(value) => {
+                  <SandSelect ariaLabel="API provider" menuSize="md" onValueChange={(value) => {
                     if (value == null) return;
                     setPool((current) => current.editing == null ? current : { ...current, editing: { ...applyProvider(value, catalog().find((item) => item.id === value)?.models[0]?.id), id: current.editing.id, key: current.editing.key, secret: current.editing.secret } });
                   }} options={catalog().map((item) => ({ value: item.id, label: item.label }))} placement="bottom-end" value={pool.editing.provider} />
@@ -307,7 +307,7 @@ export function RouterSettingsPanel({ agent, secrets, pending = false, provider,
                 </label>
                 <label>
                   <span>Thinking<small>Sent as reasoning_effort. Off omits it.</small></span>
-                  <SandSelect ariaLabel="Thinking" menuSize="lg" onValueChange={(value) => { if (value != null) setPool((current) => current.editing == null ? current : { ...current, editing: { ...current.editing, effort: value } }); }} options={[{ value: "off", label: "Off" }, { value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }, { value: "xhigh", label: "X-High" }, { value: "max", label: "Max" }]} placement="bottom-end" value={pool.editing.effort} />
+                  <SandSelect ariaLabel="Thinking" menuSize="md" onValueChange={(value) => { if (value != null) setPool((current) => current.editing == null ? current : { ...current, editing: { ...current.editing, effort: value } }); }} options={[{ value: "off", label: "Off" }, { value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }, { value: "xhigh", label: "X-High" }, { value: "max", label: "Max" }]} placement="bottom-end" value={pool.editing.effort} />
                 </label>
                 <label>
                   <span>Context window<small>Reported to the existing summarizer as this connection's window.</small></span>
@@ -323,7 +323,7 @@ export function RouterSettingsPanel({ agent, secrets, pending = false, provider,
                 </label>
                 <label>
                   <span>Key<small>Many models can share this key. Paste values in Keys.</small></span>
-                  <SandSelect ariaLabel="Key" menuSize="lg" onValueChange={(value) => { if (value != null) setPool((current) => current.editing == null ? current : { ...current, editing: { ...current.editing, secret: value } }); }} options={(pool.keys.length > 0 ? pool.keys : [{ id: pool.editing.secret || "CUSTOM_API_KEY", label: pool.editing.secret || "CUSTOM_API_KEY" }]).map((row) => ({ value: row.id, label: row.label || row.id }))} placement="bottom-end" value={pool.editing.secret || pool.keys[0]?.id} />
+                  <SandSelect ariaLabel="Key" menuSize="md" onValueChange={(value) => { if (value != null) setPool((current) => current.editing == null ? current : { ...current, editing: { ...current.editing, secret: value } }); }} options={(pool.keys.length > 0 ? pool.keys : [{ id: pool.editing.secret || "CUSTOM_API_KEY", label: pool.editing.secret || "CUSTOM_API_KEY" }]).map((row) => ({ value: row.id, label: row.label || row.id }))} placement="bottom-end" value={pool.editing.secret || pool.keys[0]?.id} />
                 </label>
                 <SandButton disabled={disabled} onClick={() => setPool((current) => ({ ...current, editing: null }))} size="sm" variant="secondary">Close editor</SandButton>
               </div>
@@ -332,21 +332,21 @@ export function RouterSettingsPanel({ agent, secrets, pending = false, provider,
           <Group title="Assignments">
             <label>
               <span>Chat<small>The turn uses this pool model.</small></span>
-              <SandSelect ariaLabel="Chat model" menuSize="lg" onValueChange={(value) => { if (value != null) setPool((current) => ({ ...current, chatId: value, fallbackIds: current.fallbackIds.filter((id) => id !== value) })); }} options={poolOptions} placement="bottom-end" value={pool.chatId || poolOptions[0]?.value} />
+              <SandSelect ariaLabel="Chat model" menuSize="md" onValueChange={(value) => { if (value != null) setPool((current) => ({ ...current, chatId: value, fallbackIds: current.fallbackIds.filter((id) => id !== value) })); }} options={poolOptions} placement="bottom-end" value={pool.chatId || poolOptions[0]?.value} />
             </label>
             <label>
               <span>Compress<small>The existing summarizer uses this pool model.</small></span>
-              <SandSelect ariaLabel="Compress model" menuSize="lg" onValueChange={(value) => { if (value != null) setPool((current) => ({ ...current, compactId: value })); }} options={compactOptions} placement="bottom-end" value={pool.compactId} />
+              <SandSelect ariaLabel="Compress model" menuSize="md" onValueChange={(value) => { if (value != null) setPool((current) => ({ ...current, compactId: value })); }} options={compactOptions} placement="bottom-end" value={pool.compactId} />
             </label>
             <label>
               <span>Compress at<small>Starts when used tokens reach this share of the chat window.</small></span>
-              <SandSelect ariaLabel="Compress at" menuSize="lg" onValueChange={(value) => { if (value != null) setPool((current) => ({ ...current, compactAt: value })); }} options={[{ value: "0.5", label: "50%" }, { value: "0.6", label: "60%" }, { value: "0.7", label: "70%" }, { value: "0.75", label: "75%" }, { value: "0.8", label: "80%" }, { value: "0.9", label: "90%" }]} placement="bottom-end" value={pool.compactAt} />
+              <SandSelect ariaLabel="Compress at" menuSize="md" onValueChange={(value) => { if (value != null) setPool((current) => ({ ...current, compactAt: value })); }} options={[{ value: "0.5", label: "50%" }, { value: "0.6", label: "60%" }, { value: "0.7", label: "70%" }, { value: "0.75", label: "75%" }, { value: "0.8", label: "80%" }, { value: "0.9", label: "90%" }]} placement="bottom-end" value={pool.compactAt} />
             </label>
             <label>
               <span>Image<small>Dedicated image model from the pool. The chat LLM is not used.</small></span>
-              <SandSelect ariaLabel="Image model" menuSize="lg" onValueChange={(value) => { if (value != null) setPool((current) => ({ ...current, imageId: value })); }} options={[{ value: "", label: "Not assigned" }, ...poolOptions]} placement="bottom-end" value={pool.imageId} />
+              <SandSelect ariaLabel="Image model" menuSize="md" onValueChange={(value) => { if (value != null) setPool((current) => ({ ...current, imageId: value })); }} options={[{ value: "", label: "Not assigned" }, ...poolOptions]} placement="bottom-end" value={pool.imageId} />
             </label>
-            <p className="sand-settings-field__hint">Fallback is tried in this order if chat fails before any tokens. A working model stays until it fails twice in a row.</p>
+            <div className="sand-settings-field__hint">Fallback is tried in this order if chat fails before any tokens. A working model stays until it fails twice in a row.</div>
             {pool.fallbackIds.map((id, index) => (
               <label key={id}>
                 <span>Fallback {index + 1}<small>Tried after chat, then the next fallback.</small></span>
@@ -361,7 +361,7 @@ export function RouterSettingsPanel({ agent, secrets, pending = false, provider,
             {pool.fallbackIds.length < 8 && unusedFallbacks.length > 0 ? (
               <label>
                 <span>Add fallback<small>Add another pool model to the fallback list.</small></span>
-                <SandSelect ariaLabel="Add fallback" menuSize="lg" onValueChange={(value) => { if (value) setPool((current) => ({ ...current, fallbackIds: [...current.fallbackIds, value] })); }} options={[{ value: "", label: "Choose a model" }, ...unusedFallbacks.map((slot) => ({ value: slot.id, label: slot.name || slot.model }))]} placement="bottom-end" value="" />
+                <SandSelect ariaLabel="Add fallback" menuSize="md" onValueChange={(value) => { if (value) setPool((current) => ({ ...current, fallbackIds: [...current.fallbackIds, value] })); }} options={[{ value: "", label: "Choose a model" }, ...unusedFallbacks.map((slot) => ({ value: slot.id, label: slot.name || slot.model }))]} placement="bottom-end" value="" />
               </label>
             ) : null}
           </Group>
@@ -369,11 +369,11 @@ export function RouterSettingsPanel({ agent, secrets, pending = false, provider,
         </>
       ) : (
         <Group title="Account">
-          <p className="sand-settings-field__hint">{provider === "codex" ? "Uses the private ChatGPT login already stored by Codex on this computer." : provider === "claude-code" ? "Uses Claude Code's existing login on this computer." : "Uses the account already connected to Grok Bot."}</p>
+          <div className="sand-settings-field__hint">{provider === "codex" ? "Uses the private ChatGPT login already stored by Codex on this computer." : provider === "claude-code" ? "Uses Claude Code's existing login on this computer." : "Uses the account already connected to Grok Bot."}</div>
         </Group>
       )}
-      {error ? <p className="sand-account__error">{error}</p> : null}
-      {notice ? <p className="sand-settings-field__hint">{notice}</p> : null}
+      {error ? <div className="sand-account__error">{error}</div> : null}
+      {notice ? <div className="sand-settings-field__hint">{notice}</div> : null}
       <Group title={`Usage for ${ROUTER_OPTIONS.find((item) => item.value === provider)?.label ?? provider}`}>
         <label><span>Requests</span><span>{formatCount(usage.requests)}</span></label>
         <label><span>Input tokens</span><span>{formatCount(usage.inputTokens)}</span></label>

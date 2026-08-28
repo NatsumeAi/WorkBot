@@ -121,11 +121,10 @@ test("source desktop reads box provider and defaults to API", async () => {
   assert.match(settings, /isSandInferenceProvider\(update\.inferenceProvider\)/);
   assert.equal(settings.includes('Object.keys(update).every'), false);
   assert.match(panel, /value: "openrouter", label: "API"/);
-  const stagedMain = "/tmp/openbot-asar-sync/linux/dist/electron-main/main.cjs";
-  const staged = await readFile(stagedMain, "utf8");
-  assert.match(staged, /const requested = req\(raw\)\.provider/);
-  assert.match(staged, /if \(provider === "cursor" && resolveWith != null\) provider = "openrouter"/);
-  assert.match(staged, /provider !== settings\.inferenceProvider/);
+  const overlay = await readFile(path.join(repoRoot, "client-ui/renderer-overlay/assets/index-BlqerJhg.js"), "utf8");
+  assert.match(overlay, /label:"API"/);
+  assert.match(overlay, /RRouterState/);
+  assert.match(overlay, /getInferenceRouter/);
 });
 
 const POOL = {

@@ -136,7 +136,7 @@ export function GeneralSettingsPanel({ account, accountPending = false, accountE
           </span>
           <SandButton disabled={isAccountPending} onClick={onAccountAction} shape="pill" size="md" variant={signedIn ? "secondary" : "primary"}>{action}</SandButton>
         </div>
-        {visibleAccountError ? <p className="sand-account__error">{visibleAccountError}</p> : null}
+        {visibleAccountError ? <div className="sand-account__error">{visibleAccountError}</div> : null}
       </SettingsGroup>
 
       <SettingsGroup title="Appearance">

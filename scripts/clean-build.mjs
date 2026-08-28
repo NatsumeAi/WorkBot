@@ -26,6 +26,7 @@ import {
   repoRoot,
   stagedAppDir,
 } from "./lib/config.mjs";
+import { installClientOverridesIntoStage } from "./lib/four-pack.mjs";
 import { compositionAuditPath, writeRuntimeCompositionAudit } from "./audit-runtime-composition.mjs";
 import {
   buildProductionHostIfSupplied,
@@ -258,6 +259,7 @@ export async function buildFidelityReconstructedAsar({
   unpackedRoot = fidelityBuiltAsarUnpacked,
   cleanOutputRoot = fidelityCleanBuildDir,
   copyRuntimeNatives = process.platform === "darwin",
+  installClientUi = true,
 } = {}) {
   const fallback = await buildAsar({
     pack: false,
@@ -272,6 +274,9 @@ export async function buildFidelityReconstructedAsar({
   const clean = await attachCompositionAudit(prepared);
   await overlayCleanDistribution(clean.outputRoot, { stageRoot, composition: clean.buildManifest.runtimeComposition });
   await overlayAuditMetadata(clean, { stageRoot });
+  // Four-pack parity: the same client-UI (pinned renderer + Windows overlay +
+  // client-overrides) is installed into every Electron stage before asar pack.
+  if (installClientUi) await installClientOverridesIntoStage(stageRoot);
   await packStagedAppWithIntegrity({ stageRoot, archivePath, unpackedRoot });
   console.log(`Fidelity hybrid ASAR ready: ${archivePath}`);
   console.log(`Fail-closed composition audit embedded: ${compositionAuditPath} (${sha256(await readFile(clean.compositionAuditPath))})`);

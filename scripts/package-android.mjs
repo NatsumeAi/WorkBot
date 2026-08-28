@@ -1,7 +1,7 @@
-import { build } from "esbuild";
-import { access, chmod, cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { repoRoot } from "./lib/config.mjs";
+import { access, chmod, cp, mkdir, rm } from "node:fs/promises";
+import { repoRoot, outputDir } from "./lib/config.mjs";
+import { buildClientUi, installClientUiIntoWebRoot, stagedWebRootFindings } from "./lib/four-pack.mjs";
 import { run } from "./lib/process.mjs";
 
 const androidRoot = path.join(repoRoot, "targets", "android");
@@ -17,44 +17,25 @@ async function exists(target) {
   }
 }
 
+/**
+ * Stage the ONE shared client-UI directory (pinned renderer + client-overrides)
+ * into the Android web roots. The Android package never builds its own
+ * frontend: byte parity with the Electron packages is the contract, enforced
+ * against the client-UI manifest below.
+ */
 export async function stageAndroidWebShell() {
-  await mkdir(www, { recursive: true });
-  await run(process.execPath, [
-    path.join(repoRoot, "node_modules", "vite", "bin", "vite.js"),
-    "build",
-    "--config",
-    path.join(repoRoot, "frontend", "vite.config.ts"),
-  ], { cwd: repoRoot });
-  const frontendOut = path.join(repoRoot, ".build", "frontend-shell");
-  if (await exists(frontendOut)) {
-    await cp(frontendOut, www, { recursive: true });
-  }
-  await build({
-    absWorkingDir: repoRoot,
-    bundle: true,
-    entryPoints: [path.join(androidRoot, "src", "desktop-shell.ts")],
-    format: "esm",
-    outfile: path.join(www, "desktop-shell.js"),
-    platform: "browser",
-    target: "es2022",
-    sourcemap: true,
-    resolveExtensions: [".ts", ".tsx", ".js", ".mjs", ".json"],
-  });
-  const indexPath = path.join(www, "index.html");
-  let html = await exists(indexPath)
-    ? await readFile(indexPath, "utf8")
-    : `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Grok Bot</title></head><body><div id="root"></div></body></html>`;
-  if (!html.includes("desktop-shell.js")) {
-    if (html.includes("<head>")) {
-      html = html.replace("<head>", `<head>\n    <script type="module" src="./desktop-shell.js"></script>`);
-    } else {
-      html = `<script type="module" src="./desktop-shell.js"></script>${html}`;
-    }
-  }
-  await writeFile(indexPath, html);
+  const built = await buildClientUi();
+  const staged = await installClientUiIntoWebRoot(www, { manifest: built.manifest });
   await mkdir(assetsWww, { recursive: true });
-  await cp(www, assetsWww, { recursive: true });
-  return { www, assetsWww };
+  await rm(assetsWww, { recursive: true, force: true });
+  await cp(www, assetsWww, { recursive: true, dereference: false, preserveTimestamps: true });
+  const webRootRelative = staged.manifest.files.map(file => file.path.startsWith("renderer/") ? file.path.slice("renderer/".length) : file.path);
+  const findings = stagedWebRootFindings(webRootRelative);
+  const failures = findings.filter(finding => finding.severity === "fail");
+  if (failures.length > 0) {
+    throw new Error(`Android web root failed the four-pack UI rules:\n${failures.map(failure => `- ${failure.message}`).join("\n")}`);
+  }
+  return { www, assetsWww, manifest: staged.manifest };
 }
 
 export async function packageAndroid() {
@@ -67,12 +48,22 @@ export async function packageAndroid() {
     await chmod(gradlew, 0o755).catch(() => undefined);
   }
   try {
-    await run(gradle, ["assembleDebug", "--no-daemon"], { cwd: androidRoot });
+    await run(gradle, ["assembleRelease", "--no-daemon"], { cwd: androidRoot });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Android web shell staged at ${staged.www}, but assembleDebug failed (${detail}). Install the Android SDK / Gradle wrapper and retry.`);
+    throw new Error(`Android web shell staged at ${staged.www}, but assembleRelease failed (${detail}). Install the Android SDK / Gradle wrapper and retry.`);
   }
-  return staged;
+  const apk = path.join(androidRoot, "app", "build", "outputs", "apk", "release", "app-release.apk");
+  if (!await exists(apk)) {
+    throw new Error(`assembleRelease finished but ${apk} is missing.`);
+  }
+  await mkdir(outputDir, { recursive: true });
+  const distApk = path.join(outputDir, "openbot-android.apk");
+  await rm(distApk, { force: true });
+  await cp(apk, distApk);
+  await rm(path.join(outputDir, "openbot-android-debug.apk"), { force: true });
+  console.log(`Packaged application: ${distApk}`);
+  return { ...staged, apk, distApk };
 }
 
 if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith("package-android.mjs")) {

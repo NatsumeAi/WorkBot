@@ -85,6 +85,7 @@ export const automationsExtension = defineHostExtension({
     const localCron = new LocalCronScheduler({
       isLocalClock: useLocalCronClock,
       isReady: () => deps["turn-execution"].isRunReady(),
+      getTimeZone: () => deps.settings.getUserTimeZone(),
       listAutomations: () => deps.transcript.listAllAutomationDefinitions(),
       fire: (args) => deps.transcript.runServerScheduledAutomation({
         agentId: args.agentId,

@@ -30,9 +30,14 @@ test("publication ignore rules retain reconstructed frontend source", async () =
 });
 
 test("default packaging keeps the polished checksum-pinned renderer", async () => {
-  const source = await readFile(path.join(repoRoot, "scripts", "package-macos.mjs"), "utf8");
-  assert.match(source, /import \{ buildFidelityReconstructedAsar \} from "\.\/clean-build\.mjs"/);
-  assert.match(source, /await buildFidelityReconstructedAsar\(\)/);
+  const source = await readFile(path.join(repoRoot, "scripts", "lib", "package-electron.mjs"), "utf8");
+  assert.match(source, /buildFidelityReconstructedAsar/);
+  assert.match(source, /"macos-arm64"/);
+  assert.match(source, /"linux-x64"/);
+  assert.match(source, /"windows-x64"/);
+  const macos = await readFile(path.join(repoRoot, "scripts", "package-macos.mjs"), "utf8");
+  assert.match(macos, /packageElectronDesktop\("macos-arm64"\)/);
+  assert.doesNotMatch(macos, /buildFidelityReconstructedAsar/);
 });
 
 test("package dispatcher is target-aware rather than macOS-only", async () => {
@@ -41,17 +46,29 @@ test("package dispatcher is target-aware rather than macOS-only", async () => {
   assert.doesNotMatch(pkg.scripts.package, /package-macos\.mjs/);
   const dispatcher = await readFile(path.join(repoRoot, "scripts", "package.mjs"), "utf8");
   assert.match(dispatcher, /detectHostPlatformTarget/);
-  assert.match(dispatcher, /package-macos\.mjs/);
-  assert.match(dispatcher, /package-linux\.mjs/);
-  assert.match(dispatcher, /package-windows\.mjs/);
+  assert.match(dispatcher, /package-electron\.mjs/);
   assert.match(dispatcher, /package-android\.mjs/);
+  assert.match(dispatcher, /packageElectronDesktop\(target\.id\)/);
+  assert.doesNotMatch(dispatcher, /package-linux\.mjs/);
+  assert.doesNotMatch(dispatcher, /package-windows\.mjs/);
+  assert.doesNotMatch(dispatcher, /package-macos\.mjs/);
+  const electronPack = await readFile(path.join(repoRoot, "scripts", "lib", "package-electron.mjs"), "utf8");
   const windows = await readFile(path.join(repoRoot, "scripts", "package-windows.mjs"), "utf8");
   const linux = await readFile(path.join(repoRoot, "scripts", "package-linux.mjs"), "utf8");
+  const macos = await readFile(path.join(repoRoot, "scripts", "package-macos.mjs"), "utf8");
   const shell = await readFile(path.join(repoRoot, "scripts", "lib", "electron-official-shell.mjs"), "utf8");
-  assert.match(windows, /stageOfficialElectronShell/);
-  assert.match(linux, /stageOfficialElectronShell/);
-  assert.match(windows, /win32/);
-  assert.match(linux, /linux/);
+  assert.match(electronPack, /buildFidelityReconstructedAsar/);
+  assert.match(electronPack, /stageOfficialElectronShell/);
+  assert.match(electronPack, /"linux-x64"/);
+  assert.match(electronPack, /"windows-x64"/);
+  assert.match(electronPack, /archiveDesktopFolder/);
+  assert.match(electronPack, /"macos-arm64"/);
+  assert.match(windows, /packageElectronDesktop\("windows-x64"\)/);
+  assert.match(linux, /packageElectronDesktop\("linux-x64"\)/);
+  assert.match(macos, /packageElectronDesktop\("macos-arm64"\)/);
+  assert.doesNotMatch(linux, /buildFidelityReconstructedAsar/);
+  assert.doesNotMatch(windows, /buildFidelityReconstructedAsar/);
+  assert.doesNotMatch(macos, /buildFidelityReconstructedAsar/);
   const electronMain = await readFile(path.join(repoRoot, "scripts", "electron-main-production-activation.mjs"), "utf8");
   assert.match(electronMain, /name: "ssh2"/);
   assert.match(electronMain, /name: "asn1"/);
@@ -105,9 +122,10 @@ test("Router settings use the trusted backend and display recorded inference usa
   assert.match(recoveredPanel, /title="Assignments"/);
   assert.match(recoveredPool, /export function prepareRouterPoolSave/);
   assert.match(poolSave, /function prepareRouterPoolSave/);
-  assert.match(localCron, /isDueLocalCron/);
+  assert.match(localCron, /isDueLocalCron\(automation, now, timeZone\)/);
   assert.match(automationsExt, /LocalCronScheduler/);
   assert.match(automationsExt, /useLocalCronClock/);
+  assert.match(automationsExt, /getTimeZone: \(\) => deps\.settings\.getUserTimeZone\(\)/);
   assert.doesNotMatch(automationsExt, /applyOriginalRendererRouterPatch/);
   const desktopBridge = await readFile(path.join(repoRoot, "source", "client-runtime", "desktop-bridge.ts"), "utf8");
   assert.match(preload, /createDesktopBridge/);
@@ -166,7 +184,7 @@ test("Router settings use the trusted backend and display recorded inference usa
   assert.match(cursorBackend, /createProviderPromptSession\(routedProvider\)/);
   assert.match(poolSave, /apiKeySecret/);
   assert.match(catalog, /gpt-5\.6-sol/);
-  assert.match(mainEdge, /resolveSandInferenceProvider\(requested, endpoints\)/);
+  assert.match(mainEdge, /resolveSandInferenceProvider\(requested, loaded\.resolve\)/);
   assert.match(turnShell, /inferenceProvider === "cursor"/);
   assert.match(turnShell, /createProviderPromptSession\(inferenceProvider, "chat"\)/);
   assert.match(turnShell, /createProviderPromptSession\(inferenceProvider, "compact"\)/);

@@ -7,12 +7,9 @@ if (target.status !== "implemented") {
   process.exit(2);
 }
 
-if (target.id === "macos-arm64") {
-  await import("./package-macos.mjs");
-} else if (target.id === "linux-x64") {
-  await import("./package-linux.mjs");
-} else if (target.id === "windows-x64") {
-  await import("./package-windows.mjs");
+if (target.id === "macos-arm64" || target.id === "linux-x64" || target.id === "windows-x64") {
+  const { packageElectronDesktop } = await import("./lib/package-electron.mjs");
+  await packageElectronDesktop(target.id);
 } else if (target.id === "android") {
   const { packageAndroid } = await import("./package-android.mjs");
   await packageAndroid();

@@ -2,15 +2,19 @@
 
 Grok Bot is one product: the Linux **box** is the server; every shell is a
 remote of that box’s gateway (HTTP + SSE + token). Desktop stays in the
-Electron family. Android is a WebView stub for a future client of the **same
-gateway**, not a second chat app and not a desktop WebSocket relay.
+Electron family. Android is a thin WebView remote of the **same gateway**,
+not a second chat app and not a desktop WebSocket relay.
+
+The four-package contract — one UI directory, one wiring, one
+`npm run pack:all` — is specified in [`docs/FOUR-PACK.md`](./FOUR-PACK.md),
+including the three gates enforced by `npm run verify:four-pack`.
 
 | Target | Family | Packager | Status |
 | --- | --- | --- | --- |
 | `macos-arm64` | Electron desktop | `scripts/package-macos.mjs` | Implemented |
 | `windows-x64` | Electron desktop | `scripts/package-windows.mjs` | Implemented (Electron 42.1.0 zip) |
 | `linux-x64` | Electron desktop | `scripts/package-linux.mjs` | Implemented (Electron 42.1.0 zip) |
-| `android` | Thin WebView client | `scripts/package-android.mjs` | Shell stub (debug APK); gateway client not wired |
+| `android` | Thin WebView client | `scripts/package-android.mjs` | Implemented: shared client-UI parity + local forwarder + in-page web runtime (debug APK; device verification pending) |
 
 The catalog in [`manifests/platforms.json`](../manifests/platforms.json) is the
 single source of truth. Loaders live in `source/shared/platform-targets.ts` and
@@ -32,16 +36,22 @@ WebAuthn stay present and gated.
 `GROK_BOT_TARGET` or the host OS:
 
 ```sh
-GROK_BOT_TARGET=macos-arm64 npm run package   # macOS .app
-GROK_BOT_TARGET=android npm run package       # debug APK + staged www
-GROK_BOT_TARGET=linux-x64 npm run package     # Electron 42.1.0 dir: dist/openbot-linux-x64
-GROK_BOT_TARGET=windows-x64 npm run package   # Electron 42.1.0 dir: dist/openbot-win32-x64
+npm run pack:all                               # one UI directory -> four packages + gates
+GROK_BOT_PACK_TARGETS=android npm run pack:all # subset
+npm run verify:four-pack                       # the three gates only
+GROK_BOT_TARGET=macos-arm64 npm run package    # macOS .app
+GROK_BOT_TARGET=android npm run package        # debug APK from the shared client-UI
+GROK_BOT_TARGET=linux-x64 npm run package      # Electron 42.1.0 dir: dist/openbot-linux-x64
+GROK_BOT_TARGET=windows-x64 npm run package    # Electron 42.1.0 dir: dist/openbot-win32-x64
 ```
 
 Linux and Windows packagers download the pinned Electron 42.1.0 zip (`@electron/get` + `checksums.json`), put reconstructed `app.asar` in `resources/`, and copy `docs/self-host.md`. They do not unpack the official Windows Setup.exe.
 
-Android packaging can still stage a WebView shell. That shell must eventually
-speak the box **gateway** (HTTP + SSE + token), not a desktop WebSocket.
+The Android package stages the same client-UI directory as the Electron
+packages (verified byte-for-byte against `client-ui-manifest.json`). The box
+gateway rejects browser-origin requests with 403
+(`source/host/gateway-server.ts`), so the phone reaches it only through the
+on-device forwarder described in `docs/FOUR-PACK.md`.
 
 ## Bootstrap without hdiutil
 

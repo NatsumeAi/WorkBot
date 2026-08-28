@@ -1,0 +1,29 @@
+/*
+ * Client-UI sidecar shipped inside every package (see docs/FOUR-PACK.md).
+ * The desktop shells never load this file; the Android WebView injects it on
+ * page load and sets <html data-sand-mobile="1">. Keep the rules generic so
+ * they cannot collide with the application's own class names; the
+ * sidebar-collapse breakpoint lands here once measured against the real DOM.
+ */
+
+html[data-sand-mobile="1"] {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overscroll-behavior-y: none;
+}
+
+html[data-sand-mobile="1"] body {
+  /* Keep interactive chrome clear of notches and gesture bars. */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/*
+ * Fresh phone has no box yet. Official UbX still treats unsigned as accountSlot
+ * "local" and covers the shell with "Setting up Grok Bot's computer" until
+ * listAgents succeeds. Hide that cover until Connect writes a box address.
+ */
+html[data-sand-needs-connect="1"] .sand-loading {
+  display: none !important;
+}

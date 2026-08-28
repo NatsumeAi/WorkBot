@@ -124,6 +124,10 @@ Remote mode remains the default.
 - Docker Desktop (optional, only for the local sandbox)
 - local Claude Code or Codex authentication for those router choices
 
+Four-platform packaging (Linux, Windows, macOS, Android) follows
+[docs/FOUR-PACK.md](docs/FOUR-PACK.md): one UI directory, one wiring,
+`npm run pack:all`, and three release gates (`npm run verify:four-pack`).
+
 Linux and Windows Electron installers are planned; the package dispatcher
 already knows those targets. See [docs/PLATFORMS.md](docs/PLATFORMS.md).
 

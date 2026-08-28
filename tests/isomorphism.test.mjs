@@ -153,6 +153,18 @@ test("android shell does not relay through a desktop session-host", async () => 
   assert.doesNotMatch(source, /session-host|sessionHost|17890/);
   assert.doesNotMatch(source, /connectWebSocketTransport/);
   assert.doesNotMatch(source, /MobileBridge/);
+});
+
+test("android packaging stages the shared client-UI, never its own frontend build", async () => {
   const packager = await readFile(path.join(repoRoot, "scripts", "package-android.mjs"), "utf8");
-  assert.match(packager, /desktop-shell\.ts/);
+  assert.match(packager, /buildClientUi/);
+  assert.match(packager, /installClientUiIntoWebRoot/);
+  assert.match(packager, /stagedWebRootFindings/);
+  assert.match(packager, /openbot-android\.apk/);
+  assert.match(packager, /assembleRelease/);
+  assert.doesNotMatch(packager, /desktop-shell\.ts/);
+  assert.doesNotMatch(packager, /vite/);
+  assert.doesNotMatch(packager, /frontend-shell/);
+  const electronPackaging = await readFile(path.join(repoRoot, "scripts", "clean-build.mjs"), "utf8");
+  assert.match(electronPackaging, /installClientOverridesIntoStage/);
 });

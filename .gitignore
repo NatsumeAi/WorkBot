@@ -15,6 +15,9 @@ node_modules/
 /.grok-*/
 /.cursor/rules/baseline-architecture.mdc
 /.cursor/rules/openbot-fix-queue.mdc
+/opencode.json
+/preload.cjs
+/targets/android/sideload.keystore
 /.playwright-cli/
 /.tmp-*.mjs
 /frontend/.tmp-*/
@@ -33,10 +36,16 @@ node_modules/
 /xlsx-*.js
 /index.html
 
-# Android web-shell staging and Gradle output.
+# Android web-shell staging and Gradle output (generated from the shared client-UI).
 /targets/android/www/
 /targets/android/app/build/
-/targets/android/app/src/main/assets/www/desktop-shell.js
-/targets/android/app/src/main/assets/www/desktop-shell.js.map
+/targets/android/app/src/main/assets/www/
 /targets/android/.gradle/
 /targets/android/build/
+# Android web-shell staging and Gradle output (generated from the shared client-UI).
+/targets/android/www/
+/targets/android/app/build/
+/targets/android/app/src/main/assets/www/
+/targets/android/.gradle/
+/targets/android/build/
+/targets/android/local.properties

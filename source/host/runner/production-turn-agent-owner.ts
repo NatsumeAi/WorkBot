@@ -56,6 +56,8 @@ export interface ProductionTurnAgentOwnerInput {
   readonly onRequestId: (requestId: string) => void;
   readonly isSubagentRunner: boolean;
   readonly isSilenceAllowed: boolean;
+  readonly isComputerUseSubagent?: boolean;
+  readonly isBrowserUseSubagent?: boolean;
   readonly canUseSelfSummary: () => boolean;
   readonly cancelThisRun: TurnAgentScope["cancelThisRun"];
   readonly createResourceAccessor: (context: Context) => Promise<TurnAgentResourceAccessor>;
@@ -166,6 +168,12 @@ export async function createProductionTurnAgentOwner(
       : { requestSource: input.requestSource }),
     isSubagentRunner: input.isSubagentRunner,
     isSilenceAllowed: input.isSilenceAllowed,
+    ...(input.isComputerUseSubagent === undefined
+      ? {}
+      : { isComputerUseSubagent: input.isComputerUseSubagent }),
+    ...(input.isBrowserUseSubagent === undefined
+      ? {}
+      : { isBrowserUseSubagent: input.isBrowserUseSubagent }),
     ...(input.hidden === undefined ? {} : { hidden: input.hidden }),
     ...(input.lineage === undefined ? {} : { lineage: input.lineage }),
     canUseSelfSummary: input.canUseSelfSummary,

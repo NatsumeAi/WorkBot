@@ -57,3 +57,20 @@ test("source: no Environment mode, curl follows Custom URL, 127 stays direct", a
   assert.doesNotMatch(server, /<option value="env">/);
   assert.doesNotMatch(server, /label="Environment"/);
 });
+
+test("settings helper copy is a padded div, not a quoted paragraph", async () => {
+  const overlay = await readFile(path.join(repoRoot, "client-ui/renderer-overlay/assets/index-BlqerJhg.js"), "utf8");
+  const css = await readFile(path.join(repoRoot, "frontend/src/recovered/features/settings/overlay/view.css"), "utf8");
+  const server = await readFile(path.join(repoRoot, "frontend/src/recovered/features/settings/overlay/server.tsx"), "utf8");
+  const panel = await readFile(path.join(repoRoot, "frontend/src/recovered/features/settings/overlay/router-panel.tsx"), "utf8");
+  assert.equal(overlay.includes('as:"p"'), false);
+  assert.match(overlay, /as:"div",color:"secondary",size:"sm",style:\{padding:"4px 13px"\},children:"Off is direct/);
+  assert.match(overlay, /as:"div",color:"primary",size:"sm",style:\{padding:"4px 13px"\},children:"Using proxy\."/);
+  assert.match(overlay, /as:"div",color:"secondary",size:"sm",style:\{padding:"4px 13px"\},children:"A key is a named slot/);
+  assert.match(overlay, /as:"div",color:"secondary",size:"sm",style:\{padding:"4px 13px"\},children:"Fallback is tried in this order/);
+  assert.match(css, /\.sand-settings-field__hint \{ margin: 0; padding: 4px 13px;/);
+  assert.match(css, /quotes: none/);
+  assert.match(server, /<div className="sand-settings-field__hint">Off is direct/);
+  assert.doesNotMatch(server, /<p className="sand-settings-field__hint">/);
+  assert.doesNotMatch(panel, /<p className="sand-settings-field__hint">/);
+});

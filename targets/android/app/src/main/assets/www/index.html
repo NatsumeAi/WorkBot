@@ -1,11 +1,17 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; font-src 'self' data:; img-src 'self' data: file: https:; media-src 'self' sand-media:; connect-src 'self' ws: sand-media:;"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Grok Bot</title>
+    <script type="module" crossorigin src="./assets/index-UbX-y3il.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-lCyB53CO.css">
   </head>
   <body>
-    <p>Stage the Android web shell with <code>GROK_BOT_TARGET=android npm run package</code>.</p>
+    <div id="root"></div>
   </body>
 </html>

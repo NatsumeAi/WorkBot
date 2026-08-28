@@ -119,9 +119,8 @@ import {
   type PromptExecutor as ReminderPromptExecutor,
 } from "./send-message-reminder-middleware.js";
 import { createStartOfTurnAckReminderMiddleware } from "./start-of-turn-ack-reminder-middleware.js";
-import { createSandBrowserUseSubagentConfig } from "./tools/sand-browser-use-subagent.js";
-import { createSandComputerUseSubagentConfig } from "./tools/sand-computer-use-subagent.js";
 import { createSandExecutorSubagentConfig } from "../sand-multitask.js";
+import { buildProductionSubagentConfigs } from "./production-subagent-configs.js";
 import {
   buildSandSubagentLaunchReviewTarget,
   buildSandSubagentRiskTarget,
@@ -1701,35 +1700,17 @@ export function createTurnAgentComposition(
   let subagentConfigsForRun: readonly unknown[] | undefined;
 
   function buildSubagentConfigsForRun(): readonly unknown[] | undefined {
-    if (host.isSubagentRunner) return undefined;
-    const configs = [...(host.getSubagentConfigs?.() ?? [])];
-    if (host.toolHost.remoteBoxHasDesktop && host.toolHost.getRemoteBoxAvailable()) {
-      const browserUseOffered = host.isBrowserUseSubagentEnabled?.() === true;
-      configs.push(createSandComputerUseSubagentConfig({ browserUseOffered }));
-      if (browserUseOffered) configs.push(createSandBrowserUseSubagentConfig());
-    }
-    if (host.isSystemPromptOverridden !== true && host.isMultitaskEnabled?.() === true) {
-      const executor = createSandExecutorSubagentConfig();
-      const generalPurposeIndex = configs.findIndex((config) => {
-        const hostName = host.getSubagentTypeName?.(config);
-        if (hostName !== undefined) return hostName === "generalPurpose";
-        if (typeof config !== "object" || config === null || !("subagent_type" in config)) return false;
-        const subagentType = config.subagent_type;
-        if (typeof subagentType !== "object" || subagentType === null || !("type" in subagentType)) return false;
-        const type = subagentType.type;
-        if (typeof type !== "object" || type === null || !("case" in type)) return false;
-        if (type.case === "unspecified") return true;
-        return type.case === "custom" &&
-          "value" in type &&
-          typeof type.value === "object" &&
-          type.value !== null &&
-          "name" in type.value &&
-          type.value.name === "generalPurpose";
-      });
-      if (generalPurposeIndex >= 0) configs.splice(generalPurposeIndex, 1, executor);
-      else configs.push(executor);
-    }
-    return configs;
+    return buildProductionSubagentConfigs({
+      isSubagentRunner: host.isSubagentRunner,
+      remoteBoxHasDesktop: host.toolHost.remoteBoxHasDesktop,
+      remoteBoxAvailable: host.toolHost.getRemoteBoxAvailable(),
+      browserUseOffered: host.isBrowserUseSubagentEnabled?.() === true,
+      multitaskEnabled: host.isMultitaskEnabled?.() === true,
+      systemPromptOverridden: host.isSystemPromptOverridden === true,
+      extra: host.getSubagentConfigs?.() ?? [],
+      createExecutor: host.createExecutorSubagentConfig
+        ?? createSandExecutorSubagentConfig,
+    });
   }
 
   function buildAgentForRunFromInput(

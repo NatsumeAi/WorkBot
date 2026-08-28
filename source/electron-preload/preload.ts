@@ -1,4 +1,4 @@
-import { createDesktopBridge } from "../client-runtime/desktop-bridge.js";
+import { createDesktopBridge, createSandStageAttachment } from "../client-runtime/desktop-bridge.js";
 import { detectHostPlatformTarget } from "../shared/platform-targets.js";
 import {
   createCoordinatorPortBroker,
@@ -141,6 +141,7 @@ export function installPrimaryPreload(options: {
   const broker = options.coordinatorBroker ?? createCoordinatorPortBroker<any>({ invokeRequest: () => { void options.ipc.invoke("sand:coordinator-port-request"); } });
   const desktop = createDesktopPreloadBridge({ ...options, env, devRestartEnabled, initialState });
   options.contextBridge.exposeInMainWorld("desktop", desktop);
+  options.contextBridge.exposeInMainWorld("sandStageAttachment", createSandStageAttachment(desktop));
   options.contextBridge.exposeInMainWorld("coordinatorPort", broker.bridge);
   options.ipc.on("sand:coordinator-port", (event: { readonly ports: readonly any[] }) => {
     const port = event.ports[0];

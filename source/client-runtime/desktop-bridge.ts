@@ -3,6 +3,7 @@ import { UnsupportedCapabilityError, unsupportedCapability } from "../shared/cap
 import { capabilityForMainMethod } from "../shared/capability-methods.js";
 import { targetSupports, type SandPlatformTarget } from "../shared/platform-targets.js";
 import { MAIN_METHOD_TABLE } from "../shared/rpc/main.js";
+import { coerceAttachmentBytes, encodeAttachmentBytesBase64, resolveStageAttachmentArgs } from "../shared/media/attachment-bytes.js";
 import { createChannelClient } from "./coordinator-client.js";
 import type { Transport } from "./transport.js";
 
@@ -73,7 +74,12 @@ export function createDesktopBridge(options: DesktopBridgeFactoryOptions): Recor
     getLinkMetadata: (url: string) => call("getLinkMetadata", { url }),
     async openExternal(url: string) { await call("openExternal", { url }); },
     async openCloudAgent(bcId: string) { await call("openCloudAgent", { bcId }); },
-    stageAttachmentBytes: (filename: string, bytes: Uint8Array) => call("stageAttachmentBytes", { filename, bytes }),
+    stageAttachmentBytes: (filename: unknown, bytes?: unknown) => {
+      const args = resolveStageAttachmentArgs(filename, bytes);
+      const payload = coerceAttachmentBytes(args.bytes);
+      if (payload == null) return call("stageAttachmentBytes", { filename: args.filename, bytes: args.bytes });
+      return call("stageAttachmentBytes", { filename: args.filename, bytesBase64: encodeAttachmentBytesBase64(payload) });
+    },
     commitStagedAttachments: (paths: readonly string[], filenames: readonly string[]) => call("commitStagedAttachments", { paths, filenames }),
     async discardStagedAttachment(path: string) { await call("discardStagedAttachment", { path }); },
     mcp: {
@@ -282,4 +288,16 @@ export function createDesktopBridge(options: DesktopBridgeFactoryOptions): Recor
     },
   };
   return desktop;
+}
+
+export function createSandStageAttachment(desktop: Record<string, unknown>): {
+  stage: (filename: unknown, bytes?: unknown) => Promise<unknown>;
+} {
+  return {
+    stage(filename, bytes) {
+      const run = desktop.stageAttachmentBytes;
+      if (typeof run !== "function") return Promise.resolve({ ok: false, reason: "failed" });
+      return Promise.resolve((run as (filename: unknown, bytes?: unknown) => unknown)(filename, bytes));
+    },
+  };
 }

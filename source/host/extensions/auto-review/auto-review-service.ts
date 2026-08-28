@@ -16,6 +16,7 @@ export interface AutoReviewServiceDeps<Classifier = unknown, Auth = unknown> {
   readonly transcript: { settleStaleAutoReviewCard(args: { agentId: string; entryId: string; requestId: string }): Promise<boolean> };
   readonly hostGeneration: string;
   readonly localMode?: SandAutoReviewMode;
+  readonly classifierAvailable?: () => boolean;
   readonly createClassifierExecutor: (auth: Auth) => Classifier;
   readonly now?: () => number;
 }
@@ -46,7 +47,7 @@ export class AutoReviewService<Classifier = unknown, Auth = unknown> {
   async sweepStaleAwaitingBadges(listAgentIds: () => Promise<readonly string[]>, ifSinceBefore: number): Promise<void> { try { for (const agentId of await listAgentIds()) this.deps.awaitingSink.clearForTab(agentId, SAND_AUTO_REVIEW_AWAITING_TAB_ID, { ifSinceBefore }); } catch {} }
   #ownerOf(requestId: string): SandAutoReviewController | undefined { for (const [controller] of this.#pendingControllers) if (controller.getPendingApprovals().some((approval) => approval.id === requestId)) return controller; return undefined; }
   #rememberSettled(id: string): void { this.#settledApprovalIds.add(id); if (this.#settledApprovalIds.size <= SETTLED_APPROVAL_MEMORY) return; const oldest = this.#settledApprovalIds.values().next(); if (!oldest.done) this.#settledApprovalIds.delete(oldest.value); }
-  #resolveModes() { return resolveSandAutoReviewModes({ settingsEnabled: this.deps.settings.getAutoReviewInstructions().isEnabled, enforceEnabled: this.deps.experiments.checkFeatureGate("sand_auto_review"), ...(this.deps.localMode === undefined ? {} : { localOverride: this.deps.localMode }) }); }
+  #resolveModes() { return resolveSandAutoReviewModes({ settingsEnabled: this.deps.settings.getAutoReviewInstructions().isEnabled, enforceEnabled: this.deps.experiments.checkFeatureGate("sand_auto_review"), classifierAvailable: this.deps.classifierAvailable?.() !== false, ...(this.deps.localMode === undefined ? {} : { localOverride: this.deps.localMode }) }); }
   #handleApprovalEvent(onUpdate: AutoReviewUpdateSink, event: SandAutoReviewEvent): void {
     const approval = event.approval; this.deps.telemetry.reportAutoReviewApproval({ eventType: event.type, conversationId: approval.agentId, approvalId: approval.id, surface: approval.surface, status: approval.status, ageMs: this.#now() - approval.createdAtMs, ...(approval.expiresAtMs === undefined ? {} : { ttlMs: approval.expiresAtMs - approval.createdAtMs }), ...(event.type === "expired" ? { cause: event.cause } : {}) });
     if (event.type === "created") { onUpdate({ type: "send-message", message: { type: "auto-review-approval", approval: { requestId: approval.id, surface: approval.surface, summary: approval.summary, reason: approval.reason, status: "pending", ...(approval.command === undefined ? {} : { command: approval.command }), ...(approval.proposedRule === undefined ? {} : { proposedRule: approval.proposedRule }) } }, timestampMs: this.#now() }); return; }

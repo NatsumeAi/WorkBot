@@ -1,6 +1,6 @@
-import http from "node:http";
-import net from "node:net";
-import tls from "node:tls";
+import type http from "node:http";
+import type net from "node:net";
+import type tls from "node:tls";
 
 export const SAND_OUTBOUND_PROXY_MODES = ["off", "custom"] as const;
 export type SandOutboundProxyMode = (typeof SAND_OUTBOUND_PROXY_MODES)[number];
@@ -85,7 +85,8 @@ function writeRequestBody(req: http.ClientRequest, request: Request): void {
   });
 }
 
-function fetchHttpViaProxy(proxyUrl: string, request: Request): Promise<Response> {
+async function fetchHttpViaProxy(proxyUrl: string, request: Request): Promise<Response> {
+  const http = (await import("node:http")).default;
   const proxy = new URL(proxyUrl);
   const target = new URL(request.url);
   const headers = headerObject(request);
@@ -107,7 +108,12 @@ function fetchHttpViaProxy(proxyUrl: string, request: Request): Promise<Response
   });
 }
 
-function fetchHttpsViaProxy(proxyUrl: string, request: Request): Promise<Response> {
+async function fetchHttpsViaProxy(proxyUrl: string, request: Request): Promise<Response> {
+  const [http, net, tls] = await Promise.all([
+    import("node:http").then(module => module.default),
+    import("node:net").then(module => module.default),
+    import("node:tls").then(module => module.default),
+  ]);
   const proxy = new URL(proxyUrl);
   const target = new URL(request.url);
   const port = target.port || "443";
@@ -161,7 +167,7 @@ export function createOutboundFetch(
     const url = new URL(request.url);
     if (hostnameIsLoopback(url.hostname)) return baseline(request);
     const proxyUrl = url.protocol === "https:" ? resolved.httpsProxy : resolved.httpProxy;
-    return url.protocol === "https:" ? fetchHttpsViaProxy(proxyUrl, request) : fetchHttpViaProxy(proxyUrl, request);
+    return url.protocol === "https:" ? await fetchHttpsViaProxy(proxyUrl, request) : await fetchHttpViaProxy(proxyUrl, request);
   };
 }
 

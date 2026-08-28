@@ -50,7 +50,8 @@
 .sand-account-card__avatar img { width: 100%; height: 100%; object-fit: cover; }
 .sand-account-card__body, .sand-usage-meter__header { display: grid; flex: 1; min-width: 0; }
 .sand-account-card__body span, .sand-usage-meter small { color: var(--cursor-text-secondary, #aaa); font-size: 11px; }
-.sand-account__error { margin: 8px 0 0; color: #f87171; font-size: 12px; }
+.sand-account__error { margin: 8px 0 0; padding: 4px 13px; color: #f87171; font-size: 12px; quotes: none; }
+.sand-account__error::before, .sand-account__error::after { content: none; }
 .sand-settings-dialog button:not(.sand-kit-button):not(.sand-kit-icon-button), .sand-settings-dialog select { padding: 6px 9px; color: inherit; background: var(--cursor-button-secondary-background, var(--cursor-bg-secondary, #292929)); border: 1px solid var(--cursor-stroke-tertiary, var(--cursor-border-secondary, #494949)); border-radius: 6px; font: inherit; }
 .sand-settings-dialog .ui-select-trigger { min-width: 148px; display: inline-flex; align-items: center; justify-content: space-between; gap: 16px; padding: 6px 9px; color: inherit; background: var(--cursor-button-secondary-background, var(--cursor-bg-secondary, #292929)); border: 1px solid var(--cursor-stroke-tertiary, var(--cursor-border-secondary, #494949)); border-radius: 6px; font: inherit; cursor: pointer; }
 .sand-settings-dialog select.ui-select-trigger { appearance: none; }
@@ -66,7 +67,8 @@
 .sand-settings-beta__status { display: block; margin-top: 8px; color: var(--cursor-text-secondary, #aaa); }
 .sand-settings-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 13px; background: var(--cursor-bg-secondary, #292929); border: 1px solid var(--cursor-border-secondary, #393939); border-radius: 9px; }
 .sand-settings-copy { display: grid; flex: 1; min-width: 0; gap: 4px; }
-.sand-settings-field__hint { color: var(--cursor-text-secondary, #aaa); font-size: 11px; }
+.sand-settings-field__hint { margin: 0; padding: 4px 13px; color: var(--cursor-text-secondary, #aaa); font-size: 11px; quotes: none; }
+.sand-settings-field__hint::before, .sand-settings-field__hint::after { content: none; }
 .sand-settings-control { display: flex; align-items: center; flex: 0 0 auto; }
 .sand-settings-uptodate-banner { display: grid; gap: 8px; padding: 13px; background: var(--cursor-bg-secondary, #292929); border: 1px solid var(--cursor-border-secondary, #393939); border-radius: 9px; }
 .sand-settings-uptodate-banner > span { color: var(--cursor-text-secondary, #aaa); font-size: 11px; }

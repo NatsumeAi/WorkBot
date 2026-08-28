@@ -2,9 +2,20 @@ plugins {
   id "com.android.application"
 }
 
+configurations.all {
+  resolutionStrategy {
+    // androidx.appcompat and androidx.webkit disagree on the Kotlin stdlib
+    // series; pin one version so the duplicate jdk7/jdk8 classes disappear.
+    force "org.jetbrains.kotlin:kotlin-stdlib:1.8.22"
+    force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22"
+    force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22"
+  }
+}
+
 android {
   namespace "com.grokbot.reconstructed"
   compileSdk 35
+  buildToolsVersion "35.0.0"
   defaultConfig {
     applicationId "com.grokbot.reconstructed"
     minSdk 26
@@ -12,9 +23,23 @@ android {
     versionCode 1
     versionName "0.18.0-reconstructed.1"
   }
+  signingConfigs {
+    sideload {
+      storeFile file("../sideload.keystore")
+      storePassword "openbot-sideload"
+      keyAlias "openbot"
+      keyPassword "openbot-sideload"
+    }
+  }
   buildTypes {
     debug {
       debuggable true
+      signingConfig signingConfigs.sideload
+    }
+    release {
+      debuggable false
+      minifyEnabled false
+      signingConfig signingConfigs.sideload
     }
   }
   compileOptions {

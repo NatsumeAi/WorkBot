@@ -62,7 +62,8 @@ export const SAND_AUTO_REVIEW_MODES_OFF: SandAutoReviewModes = Object.freeze({ h
 export const SAND_AUTO_REVIEW_MODES_SHADOW: SandAutoReviewModes = Object.freeze({ hostShell: "shadow", boxShell: "shadow", mcp: "shadow", computer: "shadow", automationWrite: "off", cloudAgent: "shadow", subagentLaunch: "shadow" });
 export const SAND_AUTO_REVIEW_MODES_ENFORCE: SandAutoReviewModes = Object.freeze({ hostShell: "enforce", boxShell: "enforce", mcp: "enforce", computer: "enforce", automationWrite: "off", cloudAgent: "enforce", subagentLaunch: "enforce" });
 
-export function resolveSandAutoReviewModes(args: { readonly settingsEnabled: boolean; readonly enforceEnabled: boolean; readonly localOverride?: SandAutoReviewMode }): SandAutoReviewModes {
+export function resolveSandAutoReviewModes(args: { readonly settingsEnabled: boolean; readonly enforceEnabled: boolean; readonly classifierAvailable?: boolean; readonly localOverride?: SandAutoReviewMode }): SandAutoReviewModes {
+  if (args.classifierAvailable === false) return SAND_AUTO_REVIEW_MODES_OFF;
   if (!args.settingsEnabled) return SAND_AUTO_REVIEW_MODES_OFF;
   if (args.localOverride !== undefined) return { hostShell: args.localOverride, boxShell: args.localOverride, mcp: args.localOverride, computer: args.localOverride, automationWrite: "off", cloudAgent: args.localOverride, subagentLaunch: args.localOverride };
   return args.enforceEnabled ? SAND_AUTO_REVIEW_MODES_ENFORCE : SAND_AUTO_REVIEW_MODES_SHADOW;

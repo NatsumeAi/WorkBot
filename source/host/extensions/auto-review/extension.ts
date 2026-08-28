@@ -1,5 +1,6 @@
 import { defineHostExtension } from "../../../internal/host-extensions.js";
 import { SAND_AUTO_REVIEW_HOST_GENERATION } from "../../runner/sand-auto-review.js";
+import { usesLocalInferenceClock } from "../../../shared/inference-router.js";
 import { HostExtensions } from "../extension-ids.generated.js";
 import {
   AutoReviewService,
@@ -33,9 +34,12 @@ export const autoReviewExtension = defineHostExtension<
     HostExtensions.Transcript,
   ],
   start: (context) => {
-    const auth = context.deps[HostExtensions.Auth] as AutoReviewAuth;
+    const auth = context.deps[HostExtensions.Auth] as AutoReviewAuth & { peekAccessToken?(): string | null };
     const experiments = context.deps[HostExtensions.Experiments] as AutoReviewDependencies["experiments"];
-    const settings = context.deps[HostExtensions.Settings] as AutoReviewDependencies["settings"];
+    const settings = context.deps[HostExtensions.Settings] as AutoReviewDependencies["settings"] & {
+      getInferenceProvider?(): unknown;
+      getInferenceEndpoints?(): { readonly endpoints?: readonly unknown[] } | null;
+    };
     const telemetry = (context.deps[HostExtensions.Telemetry] as {
       logs: AutoReviewDependencies["telemetry"];
     }).logs;
@@ -49,6 +53,9 @@ export const autoReviewExtension = defineHostExtension<
       transcript,
       hostGeneration: SAND_AUTO_REVIEW_HOST_GENERATION,
       localMode: parseLocalAutoReviewMode(process.env.SAND_AUTO_REVIEW_MODE)!,
+      classifierAvailable: () =>
+        auth.peekAccessToken?.() != null
+        && !usesLocalInferenceClock(settings.getInferenceProvider?.(), settings.getInferenceEndpoints?.()),
       createClassifierExecutor: createSandBackendSmartModeClassifierExecutor,
     });
     context.onStop(() => service.stop());

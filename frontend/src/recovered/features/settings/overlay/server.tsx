@@ -132,8 +132,8 @@ export function ServerSettingsPanel({ agent }: ServerSettingsPanelProps) {
     <div className="sand-server-section">
       <section>
         <h3>Server</h3>
-        {envOverrides ? <p className="sand-settings-field__hint">Environment variables are set on this computer, so they still win.</p> : null}
-        <p className="sand-settings-field__hint">{statusMessage}{hasToken ? " Token is saved on this computer." : ""}</p>
+        {envOverrides ? <div className="sand-settings-field__hint">Environment variables are set on this computer, so they still win.</div> : null}
+        <div className="sand-settings-field__hint">{statusMessage}{hasToken ? " Token is saved on this computer." : ""}</div>
         <label title="Hostname or IP of the Linux box">
           <span>Server</span>
           <input aria-label="Server" onChange={(event) => setHost(event.currentTarget.value)} value={host} />
@@ -226,13 +226,13 @@ export function ServerSettingsPanel({ agent }: ServerSettingsPanelProps) {
           })} size="md" variant="secondary">Connect</SandButton>
         </div>
         <p><button className="sand-settings-docs-link" onClick={() => void agent.openSelfHostDocs()} type="button">Learn more</button></p>
-        {busy && progress ? <p className="sand-settings-field__hint">{progress}</p> : null}
-        {error ? <p className="sand-account__error">{error}{error.includes("Docker") ? <> <a href={dockerUrl} rel="noreferrer" target="_blank">Docker install</a></> : null}</p> : null}
-        {notice ? <p className="sand-settings-field__hint">{notice}</p> : null}
+        {busy && progress ? <div className="sand-settings-field__hint">{progress}</div> : null}
+        {error ? <div className="sand-account__error">{error}{error.includes("Docker") ? <> <a href={dockerUrl} rel="noreferrer" target="_blank">Docker install</a></> : null}</div> : null}
+        {notice ? <div className="sand-settings-field__hint">{notice}</div> : null}
       </section>
       <section>
         <h3>Outbound proxy</h3>
-        <p className="sand-settings-field__hint">Off is direct. Custom sends public APIs through the URL you paste. 127.0.0.1 is always direct.</p>
+        <div className="sand-settings-field__hint">Off is direct. Custom sends public APIs through the URL you paste. 127.0.0.1 is always direct.</div>
         <label>
           <span>Mode<small>{proxyMode === "custom" ? "Paste a proxy URL. 127.0.0.1 stays direct." : "Direct. Local 127 APIs work without a proxy."}</small></span>
           <select aria-label="Outbound proxy mode" onChange={(event) => setProxyMode(event.currentTarget.value === "custom" ? "custom" : "off")} value={proxyMode}>
@@ -258,7 +258,7 @@ export function ServerSettingsPanel({ agent }: ServerSettingsPanelProps) {
             setProxyBusy(false);
           }
         })} size="sm" variant="primary">{proxyBusy ? "Saving…" : "Save proxy"}</SandButton>
-        {proxyUsing ? <p className="sand-settings-field__hint">Using proxy.</p> : null}
+        {proxyUsing ? <div className="sand-settings-field__hint">Using proxy.</div> : null}
       </section>
       <section>
         <h3>Advanced</h3>
