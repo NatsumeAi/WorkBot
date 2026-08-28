@@ -99,6 +99,28 @@ test("catalog uses current 2026 model IDs", async () => {
   assert.equal(compactUnusedFraction(tight.endpoints[0]), 0.1);
 });
 
+test("pasted /chat/completions URLs become the OpenAI-compatible /v1 prefix", async () => {
+  const { normalizeOpenAICompatibleBaseUrl, parseInferenceEndpointsDocument, rewriteLoopbackBaseUrlForBoxHost } = await load();
+  assert.equal(normalizeOpenAICompatibleBaseUrl("https://token.sensenova.cn/v1/chat/completions"), "https://token.sensenova.cn/v1");
+  assert.equal(normalizeOpenAICompatibleBaseUrl("https://token.sensenova.cn/v1/chat/completions/"), "https://token.sensenova.cn/v1");
+  assert.equal(normalizeOpenAICompatibleBaseUrl("https://api.openai.com/v1"), "https://api.openai.com/v1");
+  assert.equal(normalizeOpenAICompatibleBaseUrl("https://api.z.ai/api/paas/v4"), "https://api.z.ai/api/paas/v4");
+  assert.equal(normalizeOpenAICompatibleBaseUrl("http://127.0.0.1:3000/v1"), "http://127.0.0.1:3000/v1");
+  assert.equal(rewriteLoopbackBaseUrlForBoxHost("https://token.sensenova.cn/v1/chat/completions", false), "https://token.sensenova.cn/v1");
+  const parsed = parseInferenceEndpointsDocument({
+    schemaVersion: 1,
+    active: "model-5",
+    endpoints: [{
+      id: "model-5",
+      kind: "openai-compatible",
+      baseURL: "https://token.sensenova.cn/v1/chat/completions",
+      apiKeySecret: "KEY_2",
+      model: "glm-5.2",
+    }],
+  });
+  assert.equal(parsed?.endpoints[0]?.baseURL, "https://token.sensenova.cn/v1");
+});
+
 test("loopback API URLs rewrite to the Docker host only inside the box", async () => {
   const { rewriteLoopbackBaseUrlForBoxHost } = await load();
   assert.equal(rewriteLoopbackBaseUrlForBoxHost("http://127.0.0.1:3000/v1", false), "http://127.0.0.1:3000/v1");
@@ -183,7 +205,7 @@ test("fallback chain tries listed endpoints in order", async () => {
   assert.deepEqual(retryEndpointChain(document, "compact").map((endpoint) => endpoint.id), ["compact", "chat", "fallback", "fallback-2"]);
 });
 
-test("sticky failover keeps a working model then rotates after two failures", async () => {
+test("chat stays first unless that chat slot itself failed twice", async () => {
   const { parseInferenceEndpointsDocument, retryEndpointChain } = await load();
   const base = {
     schemaVersion: 1,
@@ -195,8 +217,10 @@ test("sticky failover keeps a working model then rotates after two failures", as
       { id: "fallback-2", kind: "openai-compatible", baseURL: "https://relay-b.example/v1", apiKeySecret: "RELAY_B_API_KEY", model: "model-b" },
     ],
   };
-  const stuck = parseInferenceEndpointsDocument({ ...base, sticky: { chat: "fallback", failures: { fallback: 0 } } });
-  assert.deepEqual(retryEndpointChain(stuck, "chat").map((endpoint) => endpoint.id), ["fallback", "fallback-2", "chat"]);
-  const failed = parseInferenceEndpointsDocument({ ...base, sticky: { chat: "fallback", failures: { fallback: 2 } } });
-  assert.deepEqual(retryEndpointChain(failed, "chat").map((endpoint) => endpoint.id), ["fallback-2", "chat", "fallback"]);
+  const stuckOnFallback = parseInferenceEndpointsDocument({ ...base, sticky: { chat: "fallback", failures: { fallback: 0 } } });
+  assert.deepEqual(retryEndpointChain(stuckOnFallback, "chat").map((endpoint) => endpoint.id), ["chat", "fallback", "fallback-2"]);
+  const chatFailedOnce = parseInferenceEndpointsDocument({ ...base, sticky: { chat: "fallback", failures: { chat: 1 } } });
+  assert.deepEqual(retryEndpointChain(chatFailedOnce, "chat").map((endpoint) => endpoint.id), ["chat", "fallback", "fallback-2"]);
+  const chatFailedTwice = parseInferenceEndpointsDocument({ ...base, sticky: { chat: "fallback", failures: { chat: 2 } } });
+  assert.deepEqual(retryEndpointChain(chatFailedTwice, "chat").map((endpoint) => endpoint.id), ["fallback", "fallback-2", "chat"]);
 });

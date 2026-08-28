@@ -15,6 +15,20 @@ export const RENDERER_OVERLAY_ROLES = Object.freeze({
   "assets/index-UbX-y3il.js": "registry",
 });
 export const clientOverridesRoot = path.join(repoRoot, "source", "client-overrides");
+export const JUMP_TO_BOTTOM_OVERLAY = "assets/index-UbX-y3il.js";
+export const JUMP_TO_BOTTOM_MARKER = "__sandJumpToBottom";
+
+/** Official chat bundle (UbX) is an ES module; append a statement after its export list. */
+export async function appendJumpToBottom(ubxPath) {
+  const extraPath = path.join(clientOverridesRoot, "jump-to-bottom.js");
+  if (!existsSync(ubxPath) || !existsSync(extraPath)) return false;
+  const extra = (await readFile(extraPath, "utf8")).trim();
+  if (!extra.includes(JUMP_TO_BOTTOM_MARKER)) return false;
+  const ubx = await readFile(ubxPath, "utf8");
+  if (ubx.includes(JUMP_TO_BOTTOM_MARKER)) return false;
+  await writeFile(ubxPath, `${ubx}\n${extra}\n`);
+  return true;
+}
 // GROK_BOT_CLIENT_UI_DIR lets concurrent processes (e.g. tests) own private
 // UI directories; packaging flows share the default.
 export const clientUiBuildDir = process.env.GROK_BOT_CLIENT_UI_DIR?.trim()
@@ -172,6 +186,7 @@ export async function buildClientUi({ force = false } = {}) {
   if (existsSync(rendererOverlayRoot)) {
     await cp(rendererOverlayRoot, path.join(clientUiRoot, "renderer"), { recursive: true, dereference: false, preserveTimestamps: true });
   }
+  await appendJumpToBottom(path.join(clientUiRoot, "renderer", JUMP_TO_BOTTOM_OVERLAY));
   const routerSettings = path.join(clientUiRoot, "renderer", ROUTER_SETTINGS_OVERLAY);
   if (!existsSync(routerSettings) || !routerSettingsHasApi(await readFile(routerSettings, "utf8"))) {
     throw new Error(`Client-UI is missing the Windows Router settings page (${ROUTER_SETTINGS_OVERLAY}). Put the Windows truth under client-ui/renderer-overlay/.`);

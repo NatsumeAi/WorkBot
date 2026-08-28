@@ -342,7 +342,7 @@ function parseEndpoint(value: unknown): InferenceEndpoint | undefined {
     id,
     ...(label == null ? {} : { label }),
     kind: "openai-compatible",
-    baseURL: parsedUrl.toString().replace(/\/$/, ""),
+    baseURL: normalizeOpenAICompatibleBaseUrl(parsedUrl.toString()),
     apiKeySecret,
     model,
     ...(headers == null ? {} : { headers }),
@@ -357,16 +357,29 @@ function parseEndpoint(value: unknown): InferenceEndpoint | undefined {
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 
+/** Docs often copy POST .../v1/chat/completions; the OpenAI client appends that path again. */
+export function normalizeOpenAICompatibleBaseUrl(baseURL: string): string {
+  const trimmed = baseURL.trim();
+  try {
+    const url = new URL(trimmed);
+    url.pathname = url.pathname.replace(/\/+$/, "").replace(/\/(?:chat\/)?completions$/i, "");
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return trimmed.replace(/\/+$/, "").replace(/\/(?:chat\/)?completions$/i, "");
+  }
+}
+
 /** When host-main runs inside the official box image, 127.0.0.1 is the container, not the Linux host. */
 export function rewriteLoopbackBaseUrlForBoxHost(baseURL: string, rewrite = process.env.SAND_REWRITE_LOOPBACK_TO_DOCKER_HOST === "1"): string {
-  if (!rewrite) return baseURL;
+  const normalized = normalizeOpenAICompatibleBaseUrl(baseURL);
+  if (!rewrite) return normalized;
   try {
-    const url = new URL(baseURL);
-    if (!LOOPBACK_HOSTS.has(url.hostname)) return baseURL;
+    const url = new URL(normalized);
+    if (!LOOPBACK_HOSTS.has(url.hostname)) return normalized;
     url.hostname = "host.docker.internal";
     return url.toString().replace(/\/$/, "");
   } catch {
-    return baseURL;
+    return normalized;
   }
 }
 
@@ -542,12 +555,14 @@ export function retryEndpointChain(document: InferenceEndpointsDocument, role: I
     push(document.endpoints.find((endpoint) => endpoint.id === id));
   }
   const ordered = chain.length > 0 ? chain : [activeInferenceEndpoint(document)];
-  const stickyId = role === "compact" ? document.sticky?.compact : document.sticky?.chat;
+  const primaryId = role === "compact"
+    ? (document.roles?.compact ?? document.roles?.chat ?? document.active)
+    : (document.roles?.chat ?? document.active);
   const failures = document.sticky?.failures ?? {};
-  const index = stickyId == null ? -1 : ordered.findIndex((endpoint) => endpoint.id === stickyId);
+  if ((failures[primaryId] ?? 0) < FAILOVER_FAILURE_THRESHOLD) return ordered;
+  const index = ordered.findIndex((endpoint) => endpoint.id === primaryId);
   if (index < 0) return ordered;
-  const start = (failures[stickyId] ?? 0) >= FAILOVER_FAILURE_THRESHOLD ? (index + 1) % ordered.length : index;
-  return [...ordered.slice(start), ...ordered.slice(0, start)];
+  return [...ordered.slice(index + 1), ...ordered.slice(0, index + 1)];
 }
 
 export function mergePreservedSticky(next: InferenceEndpointsDocument, previous: InferenceEndpointsDocument | undefined): InferenceEndpointsDocument {
