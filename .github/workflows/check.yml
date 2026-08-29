@@ -13,6 +13,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: false
       - uses: actions/setup-node@v4
         with:
           node-version: 26.5.0
@@ -24,4 +26,6 @@ jobs:
       - name: Build the editable frontend
         run: npm run frontend:build
       - name: Verify a fresh clean-history export is lossless
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
         run: npm run publication:check

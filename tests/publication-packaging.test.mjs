@@ -31,7 +31,8 @@ test("publication ignore rules retain reconstructed frontend source", async () =
 
 test("publication export force-adds the tracked Android www stub that gitignore would drop", async () => {
   const script = await readFile(path.join(repoRoot, "scripts", "verify-publication-tree.mjs"), "utf8");
-  assert.match(script, /\["add", "-f", "--all"\]/);
+  assert.match(script, /filter\.lfs\.required=false/);
+  assert.match(script, /"add", "-f", "--all"/);
   const ignoreRules = await readFile(path.join(repoRoot, ".gitignore"), "utf8");
   const matcher = createIgnore().add(ignoreRules);
   assert.equal(

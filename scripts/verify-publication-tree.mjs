@@ -11,20 +11,38 @@ const scratch = await mkdtemp(path.join(os.tmpdir(), "grok-bot-publication-"));
 const archive = path.join(scratch, "repository.tar");
 const exported = path.join(scratch, "exported");
 
+const gitNoLfs = [
+  "-c", "filter.lfs.smudge=",
+  "-c", "filter.lfs.clean=",
+  "-c", "filter.lfs.process=",
+  "-c", "filter.lfs.required=false",
+  "-c", "core.autocrlf=false",
+  "-c", "core.excludesFile=/dev/null",
+];
+
+const gitEnv = {
+  ...process.env,
+  GIT_LFS_SKIP_SMUDGE: "1",
+};
+
 try {
-  await run(git, ["archive", "--format=tar", `--output=${archive}`, "HEAD"], { cwd: repoRoot });
+  await run(git, [...gitNoLfs, "archive", "--format=tar", `--output=${archive}`, "HEAD"], {
+    cwd: repoRoot,
+    env: gitEnv,
+  });
   await mkdir(exported);
-  await run(tar, ["-xf", archive, "-C", exported]);
-  await run(git, ["init", "--quiet"], { cwd: exported });
+  await run(tar, ["-xpf", archive, "-C", exported]);
+  await run(git, [...gitNoLfs, "init", "--quiet"], { cwd: exported, env: gitEnv });
   // Tracked files may still match .gitignore (Android www stub). Force-add the
-  // archived tree so a clean export round-trips HEAD.
-  await run(git, ["add", "-f", "--all"], { cwd: exported });
+  // archived tree so a clean export round-trips HEAD. LFS filters stay off so
+  // GitHub runners do not rewrite pointer files.
+  await run(git, [...gitNoLfs, "add", "-f", "--all"], { cwd: exported, env: gitEnv });
 
   const [sourceTree, exportedTree, sourceFiles, exportedFiles] = await Promise.all([
-    capture(git, ["rev-parse", "HEAD^{tree}"], { cwd: repoRoot }),
-    capture(git, ["write-tree"], { cwd: exported }),
-    capture(git, ["ls-tree", "-r", "--name-only", "HEAD"], { cwd: repoRoot }),
-    capture(git, ["ls-files"], { cwd: exported }),
+    capture(git, [...gitNoLfs, "rev-parse", "HEAD^{tree}"], { cwd: repoRoot, env: gitEnv }),
+    capture(git, [...gitNoLfs, "write-tree"], { cwd: exported, env: gitEnv }),
+    capture(git, [...gitNoLfs, "ls-tree", "-r", "--name-only", "HEAD"], { cwd: repoRoot, env: gitEnv }),
+    capture(git, [...gitNoLfs, "ls-files"], { cwd: exported, env: gitEnv }),
   ]);
   if (sourceTree !== exportedTree) {
     const sourceSet = new Set(sourceFiles.split("\n").filter(Boolean));
