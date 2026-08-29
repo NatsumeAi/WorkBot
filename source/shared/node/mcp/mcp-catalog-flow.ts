@@ -135,7 +135,7 @@ export class SandMcpCatalogFlow {
     const { installFromCatalog } = await import("./local-mcp-installs.js");
     await installFromCatalog({
       plugin,
-      values: request.values,
+      ...(request.values == null ? {} : { values: request.values }),
       token,
       core: {
         bestEffortToken: bestEffort,

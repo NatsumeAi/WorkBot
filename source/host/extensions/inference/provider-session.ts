@@ -82,11 +82,13 @@ function persistSticky(role: InferenceEndpointRole, winnerId?: string, failedId?
   const failures = { ...(document.sticky?.failures ?? {}) };
   if (failedId != null) failures[failedId] = Math.min(32, (failures[failedId] ?? 0) + 1);
   if (winnerId != null) failures[winnerId] = 0;
+  const chat = role === "chat" && winnerId != null ? winnerId : document.sticky?.chat;
+  const compact = role === "compact" && winnerId != null ? winnerId : document.sticky?.compact;
   store.setInferenceEndpoints({
     ...document,
     sticky: {
-      chat: role === "chat" && winnerId != null ? winnerId : document.sticky?.chat,
-      compact: role === "compact" && winnerId != null ? winnerId : document.sticky?.compact,
+      ...(chat == null ? {} : { chat }),
+      ...(compact == null ? {} : { compact }),
       ...(Object.keys(failures).length > 0 ? { failures } : {}),
     },
   });

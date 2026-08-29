@@ -17,7 +17,7 @@ export interface LocalCronAutomation {
 
 export function nextLocalCronAt(automation: LocalCronAutomation, timeZone?: string): number | null {
   if (typeof automation.nextRunAt === "number" && Number.isFinite(automation.nextRunAt)) return automation.nextRunAt;
-  const anchor = automationAnchor({ createdAt: automation.createdAt ?? 0, lastRunAt: automation.lastRunAt });
+  const anchor = automationAnchor({ createdAt: automation.createdAt ?? 0, lastRunAt: automation.lastRunAt ?? null });
   let earliest: number | null = null;
   for (const schedule of triggerCronSchedules(automation.trigger)) {
     const next = computeNextRunAt(schedule, anchor, timeZone);

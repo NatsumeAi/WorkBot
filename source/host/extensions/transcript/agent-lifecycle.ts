@@ -30,6 +30,7 @@ import {
   truncateConversationStructure,
 } from "../../transcript-rewind.js";
 import { isUserMessageEntry } from "./send-message-shaping.js";
+import type { TranscriptEntry } from "./transcript-hub.js";
 import { getTranscript } from "./transcript-store.js";
 import { classifyAgentError } from "./turn-runtime.js";
 import type { TranscriptManagerLike } from "./transcript-hub.js";
@@ -136,7 +137,7 @@ export class AgentLifecycle {
       !session.db.getIntroductionPending()
     )
       return false;
-    if (session.db.getTranscriptEntries().some((entry) => entry.kind === "send-message" || isUserMessageEntry(entry))) {
+    if (session.db.getTranscriptEntries().some((entry: TranscriptEntry) => entry.kind === "send-message" || isUserMessageEntry(entry))) {
       session.db.setIntroductionPending(false);
       return false;
     }
@@ -155,7 +156,7 @@ export class AgentLifecycle {
               : SAND_ONBOARDING_KICKSTART_PROMPT;
           const result = await runner.run(prompt, { hidden: true });
           let delivered = result.sentMessageCount > 0
-            || session.db.getTranscriptEntries().some((entry) => entry.kind === "send-message");
+            || session.db.getTranscriptEntries().some((entry: TranscriptEntry) => entry.kind === "send-message");
           if (!result.aborted && !delivered)
             delivered =
               await this.tm.automationRuntime.ensureHiddenTurnReply(runner);
@@ -164,7 +165,7 @@ export class AgentLifecycle {
             session.db.setIntroductionPending(false);
           } else if (
             delivered
-            || session.db.getTranscriptEntries().some((entry) => entry.kind === "send-message")
+            || session.db.getTranscriptEntries().some((entry: TranscriptEntry) => entry.kind === "send-message")
           )
             session.db.setIntroductionPending(false);
           await this.tm.roster.emitAgentUpdate(session.id);

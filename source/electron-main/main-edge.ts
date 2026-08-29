@@ -177,8 +177,9 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
       return { mode, customUrl, usingProxy: resolved.kind === "proxy" };
     },
     setOutboundProxy: async (raw) => {
-      const mode = isSandOutboundProxyMode(req(raw).mode) ? req(raw).mode : "off";
-      const customUrl = typeof req(raw).customUrl === "string" ? req(raw).customUrl.trim() : "";
+      const request = req(raw);
+      const mode = isSandOutboundProxyMode(request.mode) ? request.mode : "off";
+      const customUrl = typeof request.customUrl === "string" ? request.customUrl.trim() : "";
       const settings = await deps.syncHostSettingsToBox({ outboundProxyMode: mode, outboundProxyUrl: customUrl });
       if (settings == null) throw new SandHostSettingsUnreachableError("Couldn't reach the computer to save outbound proxy.");
       const storedMode = isSandOutboundProxyMode(settings.outboundProxyMode) ? settings.outboundProxyMode : mode;

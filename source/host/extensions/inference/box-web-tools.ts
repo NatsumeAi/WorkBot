@@ -6,7 +6,6 @@ const MAX_DOCUMENTS = 8;
 export type BoxWebSearchArgs = {
   readonly searchTerm?: string;
   readonly searchQuery?: string;
-  readonly searchTerm?: string;
   readonly query?: string;
   readonly explanation?: string;
 };
@@ -22,7 +21,7 @@ export type BoxWebFetchResult =
   | { readonly error: string; readonly isTimeout?: boolean };
 
 function queryOf(args: BoxWebSearchArgs): string {
-  return (args.searchTerm ?? args.searchQuery ?? args.searchTerm ?? args.query ?? "").trim();
+  return (args.searchTerm ?? args.searchQuery ?? args.query ?? "").trim();
 }
 
 function decodeEntities(value: string): string {

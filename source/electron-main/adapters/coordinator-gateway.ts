@@ -41,7 +41,7 @@ export function createProductionCoordinatorGatewayBinding(): Pick<
         getAccessToken: async ({ backendUrl }) =>
           (await account.getAuthService()).getValidAccessToken({ backendUrl }),
         peekAccessToken: async () => {
-          try { return await (await account.getAuthService()).peekAccessToken(); }
+          try { return await (await account.getAuthService()).peekAccessToken?.() ?? null; }
           catch { return null; }
         },
         getMachineId: () => context.machineId,

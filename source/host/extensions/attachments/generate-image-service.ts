@@ -9,8 +9,8 @@ export function createSandGenerateImageService<Context>(auth: GenerateImageAuth,
   readonly onRequestId?: (id: string) => void;
 }) {
   const generateImage = createApiGenerateImageService();
-  return async (ctx: Context, description: string, _filePath: string, referenceImages: readonly { data: string; mimeType: string }[]) => {
-    const generated = await generateImage(ctx, description, referenceImages);
+  return async (ctx: Context, description: string, _filePath: string, _referenceImages: readonly { data: string; mimeType: string }[]) => {
+    const generated = await generateImage(ctx, description);
     const persisted = await options.persistImage(Buffer.from(generated.imageData, "base64"), generated.mimeType);
     if (persisted == null) throw new SandGenerateImagePersistError("Failed to save the generated image into the agent's media store.");
     return { filePath: persisted.absolutePath, imageData: generated.imageData };

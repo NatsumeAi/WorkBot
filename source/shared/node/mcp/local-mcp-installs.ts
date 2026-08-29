@@ -267,7 +267,7 @@ export async function installFromCatalog(args: {
   }
   await installMarketplaceEntryWithoutCursorAccount({
     plugin: args.plugin,
-    values: args.values,
+    ...(args.values == null ? {} : { values: args.values }),
     token: args.token,
     getMachineId: args.core.getMachineId,
     settingsPath,
@@ -293,6 +293,6 @@ export async function installMarketplaceEntryWithoutCursorAccount(args: {
     settingsPath: args.settingsPath,
     plugin: args.plugin,
     servers,
-    values: args.values,
+    ...(args.values == null ? {} : { values: args.values }),
   });
 }

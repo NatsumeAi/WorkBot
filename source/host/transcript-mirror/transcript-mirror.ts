@@ -45,7 +45,7 @@ export class FileTranscriptMirror<Store = unknown> {
    * of a shorter checkpoint; the previous file is replaced only after the new
    * bytes are synced. Failure leaves the original jsonl in place.
    */
-  rebuildFromCheckpoint(ctx: unknown, id: string, checkpoint: TranscriptCheckpoint, store: Store): Promise<void> {
+  rebuildFromCheckpoint(ctx: unknown, id: string, checkpoint: TranscriptCheckpoint, store: Store): Promise<{ entryCount: number; bytes: number }> {
     return this.serialize(id, () => this.withOutcomeReport("rebuild", id, errno => SandError.journalReplayFailed({ errno }), async () => {
       await this.removePending(id);
       await this.writeDeferred(id);

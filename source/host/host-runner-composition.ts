@@ -2536,10 +2536,10 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                       const structure = (
                         childRef as { getAgentConversationStateStructure?: () => unknown }
                       )?.getAgentConversationStateStructure?.();
-                      if (structure === undefined) {
+                      if (structure == null) {
                         throw new TypeError("production subagent conversation state is not bound");
                       }
-                      return structure;
+                      return structure as import("../packages/proto/generated/agent/v1/agent_pb.js").ConversationStateStructure;
                     },
                     createSession: owner => ({
                       getModelId: () => owner.runContext.sessions.agent.getModelId(),

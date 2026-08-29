@@ -71,7 +71,7 @@ export function planTranscriptRewind(
   const index = entries.findIndex((entry) => entry.id === entryId);
   if (index < 0) return { ok: false, reason: "missing-entry" };
   const anchor = entries[index];
-  if (!isRewindableUserMessage(anchor)) {
+  if (anchor == null || !isRewindableUserMessage(anchor)) {
     return { ok: false, reason: "not-user-message" };
   }
   if (
@@ -96,7 +96,7 @@ export function planTranscriptRewind(
 }
 
 export function keepSummaryArchivesByWindowTail(
-  archives: readonly { readonly windowTail: number },
+  archives: readonly { readonly windowTail: number }[],
   keptTurnCount: number,
 ): readonly { readonly windowTail: number }[] {
   return archives.filter((archive) => archive.windowTail <= keptTurnCount);
@@ -215,8 +215,8 @@ export async function truncateConversationStructure<T extends ConversationRewind
   }
   structure.turns = keptTurns;
   structure.summaryArchives = keptArchives;
-  structure.summary = undefined;
-  structure.summaryArchive = undefined;
+  delete structure.summary;
+  delete structure.summaryArchive;
   structure.pendingToolCalls = [];
   if (Array.isArray(structure.turnTimings) && structure.turnTimings.length > keptTurns.length) {
     structure.turnTimings = structure.turnTimings.slice(0, keptTurns.length);

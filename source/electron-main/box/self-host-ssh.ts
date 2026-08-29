@@ -5,6 +5,7 @@ import { fingerprintSha256, readKnownHost, writeKnownHost } from "./self-host-cr
 interface SshStream {
   on(event: "data", listener: (chunk: Buffer) => void): SshStream;
   on(event: "close", listener: (code: number | null) => void): SshStream;
+  close(): void;
   stderr?: { on(event: "data", listener: (chunk: Buffer) => void): unknown };
 }
 

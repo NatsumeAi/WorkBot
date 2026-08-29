@@ -135,11 +135,13 @@ export function createSelfHostEdgePort(ports: SelfHostEdgePorts) {
       if (nextUrl == null || nextToken == null) {
         return { gatewayUrl: stored?.gatewayUrl ?? "", hasToken: stored != null, status: stored == null ? "missing" : "saved", statusMessage: "Enter an access URL and token.", message: "Enter an access URL and token." };
       }
+      const host = optionalString(request.host) ?? stored?.host;
+      const username = optionalString(request.username) ?? stored?.username;
       const saved = await writeSelfHostGateway(ports.settingsPath, {
         gatewayUrl: nextUrl,
         token: nextToken,
-        host: optionalString(request.host) ?? stored?.host,
-        username: optionalString(request.username) ?? stored?.username,
+        ...(host == null ? {} : { host }),
+        ...(username == null ? {} : { username }),
         sshPort: optionalPort(request.port ?? request.sshPort, stored?.sshPort ?? SELF_HOST_DEFAULT_SSH_PORT),
         gatewayPort: optionalPort(request.gatewayPort, stored?.gatewayPort ?? SELF_HOST_DEFAULT_GATEWAY_PORT),
       });
