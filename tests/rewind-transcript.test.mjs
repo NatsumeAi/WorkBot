@@ -200,6 +200,7 @@ test("rewind does not re-arm kickstart or count whole-transcript send-message de
   const gateway = await readFile(path.join(repoRoot, "source/host/host-gateway-api.ts"), "utf8");
   const protocol = await readFile(path.join(repoRoot, "source/host/gateway-protocol.ts"), "utf8");
   const coordinator = await readFile(path.join(repoRoot, "source/shared/rpc/coordinator.ts"), "utf8");
+  const recoveredSource = await readFile(path.join(repoRoot, "frontend/src/recovered/runtime/coordinator-source.ts"), "utf8");
   const method = lifecycle.slice(lifecycle.indexOf("async rewindTranscript"));
   assert.match(lifecycle, /rewindTranscript/);
   assert.match(method, /setIntroductionPending\(false\)/);
@@ -208,6 +209,7 @@ test("rewind does not re-arm kickstart or count whole-transcript send-message de
   assert.match(gateway, /rewindTranscript:/);
   assert.match(protocol, /rewindTranscript:/);
   assert.match(coordinator, /rewindTranscript:/);
+  assert.match(recoveredSource, /rewindTranscript:\s*"transcript"/);
 });
 
 test("packed host asar still exposes rewindTranscript on the gateway table", async () => {
