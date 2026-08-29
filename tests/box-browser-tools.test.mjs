@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
+import { skipUnlessExists } from "./harness/optional-pack.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -100,8 +101,9 @@ test("host wires Task types, browserUse without Cursor, and a live subagent shel
   assert.match(autoReview, /classifierAvailable/);
 });
 
-test("live box host-main has Task types, local browserUse, and auto-review off without Cursor", async () => {
+test("live box host-main has Task types, local browserUse, and auto-review off without Cursor", async (t) => {
   const liveHost = "/home/natsume/openbot-box/host-main.cjs";
+  if (skipUnlessExists(t, liveHost, "live box host-main missing; not present on CI")) return;
   const host = await readFile(liveHost, "utf8");
   assert.match(host, /name: "computerUse"/);
   assert.match(host, /name: "browserUse"/);
