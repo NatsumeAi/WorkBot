@@ -1,4 +1,4 @@
-# Grok Bot 0.18 — reconstructed and extended
+# WorkBot — patched from grokbot
 
 ![Grok Bot Router settings with Codex selected and local usage totals](docs/assets/router-settings.png)
 
