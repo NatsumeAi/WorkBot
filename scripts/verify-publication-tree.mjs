@@ -16,7 +16,9 @@ try {
   await mkdir(exported);
   await run(tar, ["-xf", archive, "-C", exported]);
   await run(git, ["init", "--quiet"], { cwd: exported });
-  await run(git, ["add", "--all"], { cwd: exported });
+  // Tracked files may still match .gitignore (Android www stub). Force-add the
+  // archived tree so a clean export round-trips HEAD.
+  await run(git, ["add", "-f", "--all"], { cwd: exported });
 
   const [sourceTree, exportedTree, sourceFiles, exportedFiles] = await Promise.all([
     capture(git, ["rev-parse", "HEAD^{tree}"], { cwd: repoRoot }),
@@ -27,9 +29,9 @@ try {
   if (sourceTree !== exportedTree) {
     const sourceSet = new Set(sourceFiles.split("\n").filter(Boolean));
     const exportedSet = new Set(exportedFiles.split("\n").filter(Boolean));
-    const omitted = [...sourceSet].filter(file => !exportedSet.has(file));
-    const unexpected = [...exportedSet].filter(file => !sourceSet.has(file));
-    throw new Error(`Fresh publication export changed the tracked tree. Omitted: ${omitted.slice(0, 20).join(", ") || "none"}. Unexpected: ${unexpected.slice(0, 20).join(", ") || "none"}.`);
+    const omitted = [...sourceSet].filter(file => !exportedSet.has(file)).sort();
+    const unexpected = [...exportedSet].filter(file => !sourceSet.has(file)).sort();
+    throw new Error(`Fresh publication export changed the tracked tree. Omitted (${omitted.length}): ${omitted.slice(0, 20).join(", ") || "none"}. Unexpected (${unexpected.length}): ${unexpected.slice(0, 20).join(", ") || "none"}.`);
   }
 
   const ignoredSource = "frontend/src/recovered/ui/sand-form-primitives.css";

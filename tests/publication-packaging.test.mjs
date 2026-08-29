@@ -29,6 +29,18 @@ test("publication ignore rules retain reconstructed frontend source", async () =
   assert.equal(matcher.ignores("recovered/generated-output.txt"), true, "root recovery output must remain ignored");
 });
 
+test("publication export force-adds the tracked Android www stub that gitignore would drop", async () => {
+  const script = await readFile(path.join(repoRoot, "scripts", "verify-publication-tree.mjs"), "utf8");
+  assert.match(script, /\["add", "-f", "--all"\]/);
+  const ignoreRules = await readFile(path.join(repoRoot, ".gitignore"), "utf8");
+  const matcher = createIgnore().add(ignoreRules);
+  assert.equal(
+    matcher.ignores("targets/android/app/src/main/assets/www/index.html"),
+    true,
+    "www stays generated; publication must force-add the tracked stub",
+  );
+});
+
 test("default packaging keeps the polished checksum-pinned renderer", async () => {
   const source = await readFile(path.join(repoRoot, "scripts", "lib", "package-electron.mjs"), "utf8");
   assert.match(source, /buildFidelityReconstructedAsar/);
