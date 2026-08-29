@@ -6,7 +6,7 @@ import path from "node:path";
 import { build as esbuild } from "esbuild";
 import { extractFile, listPackage, statFile } from "@electron/asar";
 
-import { outputApp, outputDir, repoRoot } from "./lib/config.mjs";
+import { outputApp, outputDir, packedLinuxFolder, packedWindowsFolder, repoRoot } from "./lib/config.mjs";
 import {
   ANDROID_FORWARDER_CORE_PATH,
   ANDROID_FORWARDER_GLUE_PATH,
@@ -25,8 +25,8 @@ import {
 import { run } from "./lib/process.mjs";
 
 const electronArtifacts = {
-  "linux-x64": path.join(outputDir, "openbot-linux-x64", "resources", "app.asar"),
-  "windows-x64": path.join(outputDir, "openbot-win32-x64", "resources", "app.asar"),
+  "linux-x64": path.join(outputDir, packedLinuxFolder, "resources", "app.asar"),
+  "windows-x64": path.join(outputDir, packedWindowsFolder, "resources", "app.asar"),
 };
 const androidStagedWww = path.join(repoRoot, "targets", "android", "app", "src", "main", "assets", "www");
 const androidApk = path.join(repoRoot, "targets", "android", "app", "build", "outputs", "apk", "release", "app-release.apk");

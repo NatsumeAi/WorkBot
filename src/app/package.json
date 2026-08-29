@@ -1,6 +1,6 @@
 {
-  "name": "openbot",
-  "productName": "OpenBot",
+  "name": "workbot",
+  "productName": "WorkBot",
   "version": "0.18.0",
   "description": "Grok Bot desktop agent",
   "author": "SpaceXAI",

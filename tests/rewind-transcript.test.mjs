@@ -212,7 +212,7 @@ test("rewind does not re-arm kickstart or count whole-transcript send-message de
 
 test("packed host asar still exposes rewindTranscript on the gateway table", async () => {
   const { extractFile } = await import("@electron/asar");
-  const asar = path.join(repoRoot, "dist/openbot-linux-x64/resources/app.asar");
+  const asar = path.join(repoRoot, "dist/workbot-linux-x64/resources/app.asar");
   const { existsSync } = await import("node:fs");
   assert.equal(existsSync(asar), true, "packed linux asar missing; run pack:all");
   const host = extractFile(asar, "dist/host/host-main.cjs").toString("utf8");

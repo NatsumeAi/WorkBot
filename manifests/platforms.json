@@ -42,7 +42,7 @@
       "hostOs": "win32",
       "arch": "x64",
       "packager": "scripts/package-windows.mjs",
-      "electronShell": "openbot.exe",
+      "electronShell": "workbot.exe",
       "upstreamArtifact": "windows-x64/Grok_Bot_0.18.0_Setup.exe",
       "capabilities": {
         "conversation": "live",
@@ -64,7 +64,7 @@
       "hostOs": "linux",
       "arch": "x64",
       "packager": "scripts/package-linux.mjs",
-      "electronShell": "openbot",
+      "electronShell": "workbot",
       "upstreamArtifact": null,
       "capabilities": {
         "conversation": "live",

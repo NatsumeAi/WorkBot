@@ -94,7 +94,7 @@ test("unsigned Add still works when Cursor account servers are missing", async (
 });
 
 test("packed asar installs marketplace plugins without a Cursor account writer", async () => {
-  const packedPath = path.join(repoRoot, "dist/openbot-linux-x64/resources/app.asar");
+  const packedPath = path.join(repoRoot, "dist/workbot-linux-x64/resources/app.asar");
   const main = extractFile(packedPath, "dist/electron-main/main.cjs").toString("utf8");
   const host = extractFile(packedPath, "dist/host/host-main.cjs").toString("utf8");
   for (const [label, source] of [["main", main], ["host", host]]) {

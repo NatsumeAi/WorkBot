@@ -105,7 +105,7 @@ test("deleteAgents returns after the bot is gone even if box window teardown nev
   assert.doesNotMatch(host, /await deps\.releaseAgentBox\(args\.id\)/);
 
   const packedLinux = await readFile(
-    path.join(repoRoot, "dist/openbot-linux-x64/resources/app.asar"),
+    path.join(repoRoot, "dist/workbot-linux-x64/resources/app.asar"),
   );
   assert.ok(
     packedLinux.includes(Buffer.from("void deps.releaseAgentBox(id)")),

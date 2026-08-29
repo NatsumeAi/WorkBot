@@ -41,8 +41,8 @@ GROK_BOT_PACK_TARGETS=android npm run pack:all # subset
 npm run verify:four-pack                       # the three gates only
 GROK_BOT_TARGET=macos-arm64 npm run package    # macOS .app
 GROK_BOT_TARGET=android npm run package        # debug APK from the shared client-UI
-GROK_BOT_TARGET=linux-x64 npm run package      # Electron 42.1.0 dir: dist/openbot-linux-x64
-GROK_BOT_TARGET=windows-x64 npm run package    # Electron 42.1.0 dir: dist/openbot-win32-x64
+GROK_BOT_TARGET=linux-x64 npm run package      # Electron 42.1.0 dir: dist/workbot-linux-x64
+GROK_BOT_TARGET=windows-x64 npm run package    # Electron 42.1.0 dir: dist/workbot-win32-x64
 ```
 
 Linux and Windows packagers download the pinned Electron 42.1.0 zip (`@electron/get` + `checksums.json`), put reconstructed `app.asar` in `resources/`, and copy `docs/self-host.md`. They do not unpack the official Windows Setup.exe.

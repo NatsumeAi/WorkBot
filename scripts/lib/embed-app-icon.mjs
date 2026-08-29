@@ -15,7 +15,7 @@ async function exists(target) {
   }
 }
 
-/** Stamp the branding ICO into a Windows PE (Electron.exe / openbot.exe). No wine. */
+/** Stamp the branding ICO into a Windows PE (Electron.exe / workbot.exe). No wine. */
 export async function embedWindowsExeIcon(exePath, icoPath = BRANDING_ICON_ICO) {
   if (typeof exePath !== "string" || exePath.length === 0) throw new TypeError("exePath is required");
   const exeData = await readFile(exePath);

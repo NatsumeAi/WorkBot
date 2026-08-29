@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url);
 const { extractAll } = require("@electron/asar");
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const shellSrc = path.join(repoRoot, "dist/openbot-linux-x64");
+const shellSrc = path.join(repoRoot, "dist/workbot-linux-x64");
 const work = path.join(tmpdir(), `openbot-attach-diag-${Date.now()}`);
 const debugPort = 19335;
 const preloadDebug = path.join(work, "preload-debug.json");
@@ -83,8 +83,8 @@ async function evaluate(client, expression) {
 
 async function main() {
   await mkdir(path.join(work, "resources", "app"), { recursive: true });
-  await cp(path.join(shellSrc, "openbot"), path.join(work, "openbot"));
-  const skip = new Set(["openbot", "resources"]);
+  await cp(path.join(shellSrc, "workbot"), path.join(work, "workbot"));
+  const skip = new Set(["workbot", "resources"]);
   const { readdir } = await import("node:fs/promises");
   for (const name of await readdir(shellSrc)) {
     if (skip.has(name)) continue;
@@ -99,7 +99,7 @@ async function main() {
 
   const sandData = path.join(work, "sand");
   const userData = path.join(work, "electron-profile");
-  const child = spawn("xvfb-run", ["-a", "-s", "-screen 0 1280x800x24", path.join(work, "openbot"), `--remote-debugging-port=${debugPort}`, `--user-data-dir=${userData}`, "--no-sandbox", "--disable-gpu"], {
+  const child = spawn("xvfb-run", ["-a", "-s", "-screen 0 1280x800x24", path.join(work, "workbot"), `--remote-debugging-port=${debugPort}`, `--user-data-dir=${userData}`, "--no-sandbox", "--disable-gpu"], {
     env: { ...process.env, SAND_USER_DATA_DIR: sandData, OPENBOT_USER_DATA_DIR: sandData, ELECTRON_ENABLE_LOGGING: "1" },
     stdio: ["ignore", "pipe", "pipe"],
   });

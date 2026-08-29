@@ -58,7 +58,7 @@ function icoPngMarker() {
 }
 
 test("packed linux shell uses branding icon next to the binary, not only beside asar", () => {
-  const linuxRoot = path.join(repoRoot, "dist/openbot-linux-x64");
+  const linuxRoot = path.join(repoRoot, "dist/workbot-linux-x64");
   const besideBinary = path.join(linuxRoot, "icon.png");
   const besideAsar = path.join(linuxRoot, "resources/icon.png");
   assert.equal(existsSync(besideBinary), true, "packed linux binary-dir icon missing; run pack:all");
@@ -70,21 +70,21 @@ test("packed linux shell uses branding icon next to the binary, not only beside 
 });
 
 test("packed windows exe embeds branding ico instead of stock Electron", () => {
-  const exe = path.join(repoRoot, "dist/openbot-win32-x64/openbot.exe");
+  const exe = path.join(repoRoot, "dist/workbot-win32-x64/workbot.exe");
   assert.equal(existsSync(exe), true, "packed windows exe missing; run pack:all");
   const bytes = readFileSync(exe);
   const marker = icoPngMarker();
-  assert.equal(bytes.includes(marker), true, "openbot.exe still has the default Electron icon");
+  assert.equal(bytes.includes(marker), true, "workbot.exe still has the default Electron icon");
 });
 
 test("embedWindowsExeIcon writes branding ico into a PE copy", async () => {
   const { mkdtemp, copyFile, rm } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const { embedWindowsExeIcon } = await import(pathToFileURL(path.join(repoRoot, "scripts/lib/embed-app-icon.mjs")).href);
-  const src = path.join(repoRoot, "dist/openbot-win32-x64/openbot.exe");
+  const src = path.join(repoRoot, "dist/workbot-win32-x64/workbot.exe");
   assert.equal(existsSync(src), true, "need a packed windows exe to copy");
-  const dir = await mkdtemp(path.join(tmpdir(), "openbot-ico-"));
-  const copy = path.join(dir, "openbot.exe");
+  const dir = await mkdtemp(path.join(tmpdir(), "workbot-ico-"));
+  const copy = path.join(dir, "workbot.exe");
   try {
     await copyFile(src, copy);
     const marker = icoPngMarker();

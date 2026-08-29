@@ -7,7 +7,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { build } from "esbuild";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const shellSrc = path.join(repoRoot, "dist/openbot-linux-x64");
+const shellSrc = path.join(repoRoot, "dist/workbot-linux-x64");
 const work = path.join(tmpdir(), `openbot-attach-e2e-${Date.now()}`);
 
 const mainJs = `
@@ -155,9 +155,9 @@ async function waitForResultFile(filePath, timeoutMs) {
 async function main() {
   await rm(work, { recursive: true, force: true });
   await mkdir(path.join(work, "resources", "app"), { recursive: true });
-  const binary = path.join(work, "openbot");
-  await cp(path.join(shellSrc, "openbot"), binary);
-  const skip = new Set(["openbot", "resources"]);
+  const binary = path.join(work, "workbot");
+  await cp(path.join(shellSrc, "workbot"), binary);
+  const skip = new Set(["workbot", "resources"]);
   const { readdir, symlink } = await import("node:fs/promises");
   for (const name of await readdir(shellSrc)) {
     if (skip.has(name)) continue;

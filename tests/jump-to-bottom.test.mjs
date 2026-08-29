@@ -25,6 +25,29 @@ test("jump-to-bottom shows only when the transcript is scrolled away from the la
   assert.equal(logic.awayFromBottom({ scrollHeight: 800, scrollTop: 400, clientHeight: 400 }), false);
 });
 
+test("jump uses the official virtual transcript viewport and inner height, not a parent overflow walk", async () => {
+  const logic = await loadLogic();
+  assert.equal(typeof logic.pickScroller, "function");
+  assert.equal(typeof logic.metricsOf, "function");
+  const transcript = { id: "vt", className: "sand-virtual-transcript", overflowY: "hidden", scrollHeight: 400, clientHeight: 400, scrollTop: 0 };
+  const overflowingParent = { id: "shell", overflowY: "auto", scrollHeight: 900, clientHeight: 400, scrollTop: 0 };
+  assert.equal(logic.pickScroller(transcript, overflowingParent), transcript);
+  const inner = { scrollHeight: 0, offsetHeight: 0, style: { height: "1200px" } };
+  const metrics = logic.metricsOf({
+    scrollTop: 0,
+    clientHeight: 400,
+    scrollHeight: 400,
+    querySelector: (sel) => (sel === ".sand-virtual-transcript__inner" ? inner : null),
+  });
+  assert.equal(metrics.scrollHeight, 1200);
+  assert.equal(logic.awayFromBottom(metrics), true);
+  const source = await readFile(jumpSource, "utf8");
+  assert.match(source, /position:\s*fixed/);
+  assert.match(source, /doc\.body/);
+  assert.doesNotMatch(source, /overflowParent/);
+  assert.doesNotMatch(source, /stage\.appendChild/);
+});
+
 test("overlay inject marker is the official chat bundle, not recovered ProductionRenderer", async () => {
   const source = await readFile(jumpSource, "utf8");
   assert.match(source, /void function __sandJumpToBottom/);
@@ -53,9 +76,12 @@ test("appendJumpToBottom writes the marker once onto a fake UbX module", async (
 
 test("packed linux asar UbX includes the jump-to-bottom marker", async () => {
   const { extractFile } = await import("@electron/asar");
-  const asar = path.join(repoRoot, "dist/openbot-linux-x64/resources/app.asar");
+  const asar = path.join(repoRoot, "dist/workbot-linux-x64/resources/app.asar");
   assert.equal(existsSync(asar), true, "packed linux asar missing; run pack:all");
   const packed = extractFile(asar, "dist/renderer/assets/index-UbX-y3il.js").toString("utf8");
   assert.match(packed, /void function __sandJumpToBottom/);
   assert.match(packed, /跳到最新/);
+  const overlay = packed.slice(packed.indexOf("void function __sandJumpToBottom"));
+  assert.match(overlay, /position:\s*fixed/);
+  assert.doesNotMatch(overlay, /stage\.appendChild/);
 });

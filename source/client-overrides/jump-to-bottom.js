@@ -1,10 +1,39 @@
 void function __sandJumpToBottom() {
   const THRESHOLD = 80;
-  function awayFromBottom(node, threshold) {
-    if (node == null) return false;
-    return node.scrollHeight - node.scrollTop - node.clientHeight > (threshold ?? THRESHOLD);
+
+  function parsePx(value) {
+    if (typeof value !== "string") return 0;
+    const n = Number.parseFloat(value);
+    return Number.isFinite(n) ? n : 0;
   }
-  globalThis.__sandJumpLogic = { awayFromBottom, THRESHOLD };
+
+  function metricsOf(node) {
+    if (node == null) {
+      return { scrollTop: 0, clientHeight: 0, scrollHeight: 0 };
+    }
+    const inner = typeof node.querySelector === "function" ? node.querySelector(".sand-virtual-transcript__inner") : null;
+    const innerHeight = inner == null
+      ? 0
+      : Math.max(inner.scrollHeight || 0, inner.offsetHeight || 0, parsePx(inner.style?.height));
+    return {
+      scrollTop: node.scrollTop || 0,
+      clientHeight: node.clientHeight || 0,
+      scrollHeight: Math.max(node.scrollHeight || 0, innerHeight),
+    };
+  }
+
+  function awayFromBottom(node, threshold) {
+    const metrics = node != null && typeof node.querySelector === "function" ? metricsOf(node) : (node ?? { scrollTop: 0, clientHeight: 0, scrollHeight: 0 });
+    const height = Math.max(metrics.scrollHeight || 0, metrics.innerHeight || 0);
+    return height - (metrics.scrollTop || 0) - (metrics.clientHeight || 0) > (threshold ?? THRESHOLD);
+  }
+
+  function pickScroller(transcript, _parent) {
+    return transcript ?? null;
+  }
+
+  globalThis.__sandJumpLogic = { awayFromBottom, THRESHOLD, pickScroller, metricsOf };
+
   const doc = globalThis.document;
   if (doc == null) return;
 
@@ -12,9 +41,8 @@ void function __sandJumpToBottom() {
   const BUTTON_CLASS = "sand-jump-bottom";
   const CSS = `
 .${BUTTON_CLASS}{
-  position:absolute;
-  right:18px;
-  z-index:40;
+  position:fixed;
+  z-index:400;
   width:40px;
   height:40px;
   margin:0;
@@ -32,6 +60,7 @@ void function __sandJumpToBottom() {
   transform:translateY(8px) scale(.96);
   transition:opacity .16s ease, transform .16s ease;
   -webkit-tap-highlight-color:transparent;
+  pointer-events:auto;
 }
 .${BUTTON_CLASS}[data-show="1"]{
   display:flex;
@@ -60,41 +89,29 @@ html.dark .${BUTTON_CLASS}{
     doc.head.appendChild(style);
   }
 
-  function overflowParent(start) {
-    let node = start;
-    while (node != null && node !== doc.body) {
-      const style = globalThis.getComputedStyle?.(node);
-      const overflowY = style?.overflowY ?? "";
-      if ((overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") && node.scrollHeight > node.clientHeight + 4) {
-        return node;
-      }
-      node = node.parentElement;
-    }
-    return start;
-  }
-
   function findScroller() {
     const transcript = doc.querySelector(".sand-virtual-transcript");
-    if (transcript == null) return null;
-    return overflowParent(transcript);
+    return pickScroller(transcript);
   }
 
-  function findStage() {
-    return doc.querySelector(".sand-chat-stage");
-  }
-
-  function dockOffset() {
-    const dock = doc.querySelector(".sand-chat-input-dock");
-    return dock instanceof globalThis.HTMLElement ? dock.offsetHeight + 12 : 88;
+  function placeButton(button, scroller) {
+    if (typeof scroller.getBoundingClientRect !== "function") return;
+    const rect = scroller.getBoundingClientRect();
+    if (rect.width < 40 || rect.height < 40) {
+      button.removeAttribute("data-show");
+      return;
+    }
+    button.style.left = `${Math.round(rect.right - 58)}px`;
+    button.style.top = `${Math.round(rect.bottom - 58)}px`;
+    button.style.right = "auto";
+    button.style.bottom = "auto";
   }
 
   function install() {
     ensureStyle();
-    const stage = findStage();
-    if (stage == null) return;
-    const style = globalThis.getComputedStyle?.(stage);
-    if (style != null && style.position === "static") stage.style.position = "relative";
-    let button = stage.querySelector(`.${BUTTON_CLASS}`);
+    const host = doc.body;
+    if (host == null) return;
+    let button = doc.querySelector(`.${BUTTON_CLASS}`);
     if (!(button instanceof globalThis.HTMLButtonElement)) {
       button = doc.createElement("button");
       button.type = "button";
@@ -105,16 +122,23 @@ html.dark .${BUTTON_CLASS}{
         const scroller = findScroller();
         if (scroller == null) return;
         const reduce = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
-        scroller.scrollTo({ top: scroller.scrollHeight, behavior: reduce ? "auto" : "smooth" });
+        const metrics = metricsOf(scroller);
+        if (typeof scroller.scrollTo === "function") {
+          scroller.scrollTo({ top: metrics.scrollHeight, behavior: reduce ? "auto" : "smooth" });
+        } else {
+          scroller.scrollTop = metrics.scrollHeight;
+        }
+        const pill = doc.querySelector(".sand-new-messages-pill__jump");
+        if (pill instanceof globalThis.HTMLElement) pill.click();
       });
-      stage.appendChild(button);
+      host.appendChild(button);
     }
     const scroller = findScroller();
     if (scroller == null) {
       button.removeAttribute("data-show");
       return;
     }
-    button.style.bottom = `${dockOffset()}px`;
+    placeButton(button, scroller);
     if (awayFromBottom(scroller)) button.setAttribute("data-show", "1");
     else button.removeAttribute("data-show");
   }

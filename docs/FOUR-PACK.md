@@ -163,9 +163,9 @@ SSE 带 identity 编码。
 4. 对本次构建的目标跑 `scripts/verify-four-pack.mjs`，FAIL/NOT-READY 即整体
    退出非 0（不许当同步完成）。
 
-产物：`dist/openbot-linux-x64/` 与 `dist/openbot-linux-x64.zip`、
-`dist/openbot-win32-x64/` 与 `dist/openbot-win32-x64.zip`、
-`dist/openbot-android.apk`（Gradle 原件仍在
+产物：`dist/workbot-linux-x64/` 与 `dist/workbot-linux-x64.zip`、
+`dist/workbot-win32-x64/` 与 `dist/workbot-win32-x64.zip`、
+`dist/workbot-android.apk`（Gradle 原件仍在
 `targets/android/app/build/outputs/apk/release/app-release.apk`）、
 `dist/Grok Bot 0.18 Reconstructed.app`（darwin）。
 

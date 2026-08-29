@@ -17,6 +17,26 @@ async function loadLogic() {
   return sandbox.globalThis.__sandRewindLogic;
 }
 
+function mockNode(attrs, parent = null) {
+  const node = {
+    attrs,
+    parentElement: parent,
+    getAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
+    },
+    closest(selector) {
+      let current = this;
+      while (current != null) {
+        if (selector === ".sand-message-action-anchor" && current.attrs.className === "sand-message-action-anchor") return current;
+        if (selector === "[data-entry-id], [data-row-key]" && (current.attrs["data-entry-id"] != null || current.attrs["data-row-key"] != null)) return current;
+        current = current.parentElement;
+      }
+      return null;
+    },
+  };
+  return node;
+}
+
 test("rewind menu is only offered on the user's own message row", async () => {
   const logic = await loadLogic();
   assert.equal(logic.shouldShowRewind("user", "t2u"), true);
@@ -26,6 +46,29 @@ test("rewind menu is only offered on the user's own message row", async () => {
     logic.isUserRow({ getAttribute: (name) => (name === "data-role" ? "user" : name === "data-entry-id" ? "t2u" : null) }),
     true,
   );
+});
+
+test("official right-click row is data-row-key without --menu-open or data-entry-id", async () => {
+  const logic = await loadLogic();
+  assert.equal(typeof logic.rowFromTarget, "function");
+  assert.equal(typeof logic.entryIdFromRow, "function");
+  assert.equal(typeof logic.isRewindMenu, "function");
+  const row = mockNode({ "data-row-key": "t2u", "data-role": "user" });
+  const anchor = mockNode({ className: "sand-message-action-anchor" }, row);
+  row.parentElement = null;
+  anchor.parentElement = row;
+  const target = mockNode({ className: "sand-message-text" }, anchor);
+  const found = logic.rowFromTarget(target);
+  assert.equal(logic.entryIdFromRow(found), "t2u");
+  assert.equal(found.getAttribute("data-role"), "user");
+  assert.equal(logic.shouldShowRewind(found.getAttribute("data-role"), logic.entryIdFromRow(found)), true);
+  assert.equal(logic.isUserRow(found), true);
+  assert.equal(logic.isRewindMenu({ getAttribute: (name) => (name === "aria-label" ? "Message actions" : null) }), true);
+  assert.equal(logic.isRewindMenu({ getAttribute: (name) => (name === "aria-label" ? "More message actions" : null) }), false);
+  const source = await readFile(rewindSource, "utf8");
+  assert.match(source, /data-row-key/);
+  assert.match(source, /contextmenu/);
+  assert.doesNotMatch(source, /sand-message-action-anchor--menu-open/);
 });
 
 test("overlay copy is restart-from-here, not unsend, and is not in ProductionRenderer", async () => {
@@ -59,10 +102,13 @@ test("appendRewindFromHere writes the marker once onto a fake UbX module", async
 
 test("packed linux asar UbX includes 从这里重来 on the official chat bundle", async () => {
   const { extractFile } = await import("@electron/asar");
-  const asar = path.join(repoRoot, "dist/openbot-linux-x64/resources/app.asar");
+  const asar = path.join(repoRoot, "dist/workbot-linux-x64/resources/app.asar");
   assert.equal(existsSync(asar), true, "packed linux asar missing; run pack:all");
   const packed = extractFile(asar, "dist/renderer/assets/index-UbX-y3il.js").toString("utf8");
   assert.match(packed, /void function __sandRewindFromHere/);
   assert.match(packed, /从这里重来/);
   assert.match(packed, /rewindTranscript/);
+  const overlay = packed.slice(packed.indexOf("void function __sandRewindFromHere"));
+  assert.match(overlay, /data-row-key/);
+  assert.doesNotMatch(overlay, /sand-message-action-anchor--menu-open/);
 });

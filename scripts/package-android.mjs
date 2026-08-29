@@ -1,6 +1,6 @@
 import path from "node:path";
 import { access, chmod, cp, mkdir, rm } from "node:fs/promises";
-import { repoRoot, outputDir } from "./lib/config.mjs";
+import { repoRoot, outputDir, packedAndroidApkName } from "./lib/config.mjs";
 import { buildClientUi, installClientUiIntoWebRoot, stagedWebRootFindings } from "./lib/four-pack.mjs";
 import { run } from "./lib/process.mjs";
 
@@ -58,9 +58,11 @@ export async function packageAndroid() {
     throw new Error(`assembleRelease finished but ${apk} is missing.`);
   }
   await mkdir(outputDir, { recursive: true });
-  const distApk = path.join(outputDir, "openbot-android.apk");
+  const distApk = path.join(outputDir, packedAndroidApkName);
   await rm(distApk, { force: true });
   await cp(apk, distApk);
+  await rm(path.join(outputDir, "workbot-android-debug.apk"), { force: true });
+  await rm(path.join(outputDir, "openbot-android.apk"), { force: true });
   await rm(path.join(outputDir, "openbot-android-debug.apk"), { force: true });
   console.log(`Packaged application: ${distApk}`);
   return { ...staged, apk, distApk };

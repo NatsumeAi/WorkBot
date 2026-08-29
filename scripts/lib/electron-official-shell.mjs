@@ -3,7 +3,7 @@ import { createReadStream, readFileSync } from "node:fs";
 import { access, cp, mkdir, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { downloadArtifact } from "@electron/get";
-import { repoRoot } from "./config.mjs";
+import { packedLinuxBinary, packedWindowsBinary, repoRoot } from "./config.mjs";
 import { run } from "./process.mjs";
 
 export const ELECTRON_SHELL_VERSION = "42.1.0";
@@ -122,7 +122,7 @@ export async function installReconstructedAsar({ shellRoot, builtAsar, builtAsar
 }
 
 function platformBinaryName(extractedBinary) {
-  if (extractedBinary === LINUX_BINARY) return "openbot";
-  if (extractedBinary === WINDOWS_BINARY) return "openbot.exe";
+  if (extractedBinary === LINUX_BINARY) return packedLinuxBinary;
+  if (extractedBinary === WINDOWS_BINARY) return packedWindowsBinary;
   return extractedBinary;
 }

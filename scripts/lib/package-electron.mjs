@@ -7,6 +7,8 @@ import { signAppBundleAdHoc } from "./codesign.mjs";
 import {
   outputApp,
   outputDir,
+  packedLinuxFolder,
+  packedWindowsFolder,
   reconstructedBundleId,
   reconstructedName,
   repoRoot,
@@ -21,8 +23,8 @@ import { SYSTEM_TOOLS } from "./system-tools.mjs";
  * (same asar payload: pinned 0.18 renderer + Windows overlay). Only the shell wrap differs.
  */
 const ELECTRON_DESKTOP = {
-  "linux-x64": { kind: "zip-shell", platform: "linux", arch: "x64", folder: "openbot-linux-x64" },
-  "windows-x64": { kind: "zip-shell", platform: "win32", arch: "x64", folder: "openbot-win32-x64" },
+  "linux-x64": { kind: "zip-shell", platform: "linux", arch: "x64", folder: packedLinuxFolder },
+  "windows-x64": { kind: "zip-shell", platform: "win32", arch: "x64", folder: packedWindowsFolder },
   "macos-arm64": { kind: "macos-app" },
 };
 
@@ -143,6 +145,10 @@ export async function packageElectronDesktops(targetIds) {
   if (zipSpecs.length > 0) {
     const asar = await buildFidelityReconstructedAsar({ copyRuntimeNatives: false });
     for (const spec of zipSpecs) results.push(await installZipShell(spec, asar));
+    for (const leftover of ["openbot-linux-x64", "openbot-win32-x64"]) {
+      await rm(path.join(outputDir, leftover), { recursive: true, force: true });
+      await rm(path.join(outputDir, `${leftover}.zip`), { force: true });
+    }
   }
   if (includeMacos) results.push(await packageMacosDesktop());
   return results;

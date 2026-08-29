@@ -219,9 +219,9 @@ test("Android/web stageBytes + commitStaged accept the same clones and POST byte
 
 test("packed linux, windows, and android encode attachments as bytesBase64; linux asar equals windows asar", async () => {
   const { extractFile } = await import("@electron/asar");
-  const linuxAsar = path.join(repoRoot, "dist/openbot-linux-x64/resources/app.asar");
-  const windowsAsar = path.join(repoRoot, "dist/openbot-win32-x64/resources/app.asar");
-  const apk = path.join(repoRoot, "dist/openbot-android.apk");
+  const linuxAsar = path.join(repoRoot, "dist/workbot-linux-x64/resources/app.asar");
+  const windowsAsar = path.join(repoRoot, "dist/workbot-win32-x64/resources/app.asar");
+  const apk = path.join(repoRoot, "dist/workbot-android.apk");
   let linux;
   let windows;
   try {

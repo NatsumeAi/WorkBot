@@ -40,7 +40,12 @@ export const devProfileDir = path.join(cacheDir, "dev-profile");
 
 export const upstreamVersion = "0.18.0";
 export const reconstructedBundleId = "com.openbot.app";
-export const reconstructedName = "OpenBot";
+export const reconstructedName = "WorkBot";
+export const packedLinuxFolder = "workbot-linux-x64";
+export const packedWindowsFolder = "workbot-win32-x64";
+export const packedLinuxBinary = "workbot";
+export const packedWindowsBinary = "workbot.exe";
+export const packedAndroidApkName = "workbot-android.apk";
 export const fidelityBundleId = "com.anysphere.sand.reconstructed.fidelity";
 export const fidelityName = "Grok Bot 0.18 Fidelity";
 export const dmgUrl = "https://downloads.cursor.com/grokbot/stable/darwin-arm64/0.18.0/Grok_Bot_0.18.0.dmg";

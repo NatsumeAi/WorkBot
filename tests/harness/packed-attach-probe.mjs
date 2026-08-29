@@ -11,7 +11,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const binary = path.join(repoRoot, "dist/openbot-linux-x64/openbot");
+const binary = path.join(repoRoot, "dist/workbot-linux-x64/workbot");
 const debugPort = Number(process.env.OPENBOT_ATTACH_PROBE_PORT ?? 19333);
 
 function overlayEncodeSource() {

@@ -5,7 +5,7 @@
     android:allowBackup="false"
     android:icon="@mipmap/ic_launcher"
     android:roundIcon="@mipmap/ic_launcher"
-    android:label="OpenBot"
+    android:label="WorkBot"
     android:usesCleartextTraffic="true"
     android:theme="@style/Theme.AppCompat.NoActionBar">
     <activity

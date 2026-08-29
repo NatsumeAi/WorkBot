@@ -160,11 +160,16 @@ test("android packaging stages the shared client-UI, never its own frontend buil
   assert.match(packager, /buildClientUi/);
   assert.match(packager, /installClientUiIntoWebRoot/);
   assert.match(packager, /stagedWebRootFindings/);
-  assert.match(packager, /openbot-android\.apk/);
+  assert.match(packager, /packedAndroidApkName/);
   assert.match(packager, /assembleRelease/);
   assert.doesNotMatch(packager, /desktop-shell\.ts/);
   assert.doesNotMatch(packager, /vite/);
   assert.doesNotMatch(packager, /frontend-shell/);
   const electronPackaging = await readFile(path.join(repoRoot, "scripts", "clean-build.mjs"), "utf8");
   assert.match(electronPackaging, /installClientOverridesIntoStage/);
+  const config = await readFile(path.join(repoRoot, "scripts", "lib", "config.mjs"), "utf8");
+  assert.match(config, /reconstructedName = "WorkBot"/);
+  assert.match(config, /packedLinuxFolder = "workbot-linux-x64"/);
+  assert.match(config, /packedWindowsBinary = "workbot\.exe"/);
+  assert.match(config, /packedAndroidApkName = "workbot-android\.apk"/);
 });

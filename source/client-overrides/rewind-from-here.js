@@ -3,14 +3,32 @@ void function __sandRewindFromHere() {
   const NOTICE = "对话从这里重来。不会撤销已经做过的 Shell / 文件 / 浏览器操作。";
   const MENU_LABEL = "Message actions";
   const ITEM_ATTR = "data-sand-rewind";
+  const ROW_SELECTOR = "[data-entry-id], [data-row-key]";
 
-  function isUserRow(node) {
-    if (node == null || typeof node.getAttribute !== "function") return false;
-    return node.getAttribute("data-role") === "user" && typeof node.getAttribute("data-entry-id") === "string" && node.getAttribute("data-entry-id").length > 0;
+  function entryIdFromRow(row) {
+    if (row == null || typeof row.getAttribute !== "function") return "";
+    const id = row.getAttribute("data-entry-id") ?? row.getAttribute("data-row-key");
+    return typeof id === "string" ? id : "";
   }
 
   function shouldShowRewind(role, entryId) {
     return role === "user" && typeof entryId === "string" && entryId.length > 0;
+  }
+
+  function isUserRow(node) {
+    if (node == null || typeof node.getAttribute !== "function") return false;
+    return shouldShowRewind(node.getAttribute("data-role"), entryIdFromRow(node));
+  }
+
+  function isRewindMenu(menu) {
+    return menu != null && typeof menu.getAttribute === "function" && menu.getAttribute("aria-label") === MENU_LABEL;
+  }
+
+  function rowFromTarget(target) {
+    if (target == null || typeof target.closest !== "function") return null;
+    const anchor = target.closest(".sand-message-action-anchor") ?? target;
+    if (anchor == null || typeof anchor.closest !== "function") return null;
+    return anchor.closest(ROW_SELECTOR);
   }
 
   globalThis.__sandRewindLogic = {
@@ -18,6 +36,9 @@ void function __sandRewindFromHere() {
     NOTICE,
     isUserRow,
     shouldShowRewind,
+    isRewindMenu,
+    rowFromTarget,
+    entryIdFromRow,
     menuHasRewind(menu) {
       return menu != null && typeof menu.querySelector === "function" && menu.querySelector(`[${ITEM_ATTR}]`) != null;
     },
@@ -27,9 +48,14 @@ void function __sandRewindFromHere() {
   if (doc == null) return;
 
   let activeAgentId = null;
+  let lastRow = null;
   let nextRequestId = 0;
   const pending = new Map();
   let port = null;
+
+  function rememberAgentId(value) {
+    if (typeof value === "string" && value.length > 0) activeAgentId = value;
+  }
 
   function onPortMessage(event) {
     const data = event?.data;
@@ -42,11 +68,11 @@ void function __sandRewindFromHere() {
       else waiter.reject(new Error(data.outcome?.failure?.message ?? "rewind failed"));
       return;
     }
-    if (data.kind === "event" && data.family === "transcript") {
+    if (data.kind === "event") {
       const payload = data.payload;
-      if (payload?.type === "snapshot" && typeof payload.activeAgentId === "string") {
-        activeAgentId = payload.activeAgentId;
-      }
+      if (payload == null || typeof payload !== "object") return;
+      rememberAgentId(payload.activeAgentId);
+      rememberAgentId(payload.agentId);
     }
   }
 
@@ -91,25 +117,30 @@ void function __sandRewindFromHere() {
     return result;
   }
 
-  function openAnchorRow() {
-    const anchor = doc.querySelector(".sand-message-action-anchor--menu-open");
-    if (anchor == null) return null;
-    return typeof anchor.closest === "function" ? anchor.closest("[data-entry-id]") : null;
+  function rememberRow(event) {
+    const row = rowFromTarget(event?.target);
+    if (row != null) lastRow = row;
   }
 
   function injectItem(menu) {
-    if (menu == null || menu.getAttribute("aria-label") !== MENU_LABEL) return;
+    if (!isRewindMenu(menu)) return;
     if (menu.querySelector(`[${ITEM_ATTR}]`) != null) return;
-    const row = openAnchorRow();
-    const entryId = row?.getAttribute("data-entry-id");
+    const row = lastRow;
+    const entryId = entryIdFromRow(row);
     const role = row?.getAttribute("data-role");
     if (!shouldShowRewind(role, entryId)) return;
+    const sample = menu.querySelector('[role="menuitem"]');
     const button = doc.createElement("button");
     button.type = "button";
     button.setAttribute(ITEM_ATTR, "1");
+    button.setAttribute("role", "menuitem");
     button.setAttribute("aria-label", COPY);
     button.textContent = COPY;
-    button.style.cssText = "display:block;width:100%;margin:0;padding:8px 12px;border:0;background:transparent;text-align:left;font:inherit;cursor:pointer;color:inherit;";
+    if (sample != null && typeof sample.className === "string" && sample.className.length > 0) {
+      button.className = sample.className;
+    } else {
+      button.style.cssText = "display:block;width:100%;margin:0;padding:8px 12px;border:0;background:transparent;text-align:left;font:inherit;cursor:pointer;color:inherit;";
+    }
     button.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -122,6 +153,7 @@ void function __sandRewindFromHere() {
   }
 
   hookCoordinatorClaim();
+  doc.addEventListener("contextmenu", rememberRow, true);
   const observer = new globalThis.MutationObserver(() => {
     hookCoordinatorClaim();
     for (const menu of doc.querySelectorAll(`[aria-label="${MENU_LABEL}"]`)) injectItem(menu);
