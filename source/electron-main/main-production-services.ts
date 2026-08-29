@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { ApplicationMenuElectronPort, ApplicationMenuItem } from "./application-menu.js";
 import { createCoordinatorMainLegs } from "./coordinator/coordinator-main-legs.js";
 import { createEgressConnectionObserver } from "./box/remote-connector-egress.js";
@@ -143,12 +143,21 @@ export function resolveElectronProductionResources(args: {
 }): ElectronProductionResources {
   const preloadName = resolveSandMainWindowPreload({ isPackaged: args.app.isPackaged, env: args.env });
   const isAttachProdBox = !args.app.isPackaged && resolveAttachProdBoxPreferred(args.env, args.attachProdBoxPreferencePath);
+  const resourcesPath = typeof Reflect.get(process, "resourcesPath") === "string" ? Reflect.get(process, "resourcesPath") as string : "";
+  const execDir = typeof process.execPath === "string" && process.execPath.length > 0 ? dirname(process.execPath) : "";
+  const packagedIcon = [
+    args.env.SAND_DEV_APP_ICON,
+    resourcesPath.length > 0 ? join(resourcesPath, "icon.png") : undefined,
+    execDir.length > 0 ? join(execDir, "icon.png") : undefined,
+    execDir.length > 0 ? join(execDir, "resources", "icon.png") : undefined,
+  ].find((candidate) => typeof candidate === "string" && candidate.length > 0 && existsSync(candidate));
+  const devAppIcon = packagedIcon;
   return {
     metadata: args.metadata,
     appName: args.app.getName(),
     preloadPath: join(args.moduleDir, "..", "electron-preload", preloadName),
     rendererHtmlPath: join(args.moduleDir, "..", "renderer", "index.html"),
-    ...(args.env.SAND_DEV_APP_ICON == null ? {} : { devAppIcon: args.env.SAND_DEV_APP_ICON }),
+    ...(devAppIcon == null ? {} : { devAppIcon }),
     isAttachProdBox,
   };
 }

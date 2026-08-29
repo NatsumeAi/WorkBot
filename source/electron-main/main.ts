@@ -294,7 +294,7 @@ export function startElectronMain(deps: ElectronMainDependencies): ElectronMainR
       isWindows: platform === "win32",
       backgroundColor,
     });
-    const icon = deps.app.isPackaged ? undefined : deps.devAppIcon;
+    const icon = deps.devAppIcon;
     const window = deps.createBrowserWindow({
       ...placement.windowOptions,
       title: deps.appName,

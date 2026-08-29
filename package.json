@@ -42,6 +42,7 @@
     "node-addon-api": "8.5.0",
     "node-gyp": "12.1.0",
     "node-gyp-build": "4.8.4",
+    "resedit": "2.0.1",
     "sirv": "3.0.2",
     "typescript": "7.0.2",
     "vite": "8.2.1"

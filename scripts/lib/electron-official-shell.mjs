@@ -116,6 +116,8 @@ export async function installReconstructedAsar({ shellRoot, builtAsar, builtAsar
     await cp(path.join(shellRoot, binaryName), path.join(shellRoot, renamed));
     await rm(path.join(shellRoot, binaryName));
   }
+  const { installShellAppIcon } = await import("./embed-app-icon.mjs");
+  await installShellAppIcon({ shellRoot, binaryName: renamed });
   return { packagedAsar, packagedUnpacked, binaryName: renamed };
 }
 
