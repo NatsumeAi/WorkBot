@@ -22,6 +22,13 @@ import { SandAgentDb } from "../session/agent-db.js";
 import { checkpointSandAgentDb } from "../../storage/store-db.js";
 import { publishTranscriptMutation } from "../../transcript-mutation-events.js";
 import { describeAgentRunError } from "./agent-run-error.js";
+import { ConversationStateStructure } from "../../../packages/proto/generated/agent/v1/agent_pb.js";
+import { getSharedTranscriptJournal } from "../../transcript-mirror/production-provider.js";
+import {
+  isRewindableUserMessage,
+  rewindTranscriptWithHooks,
+  truncateConversationStructure,
+} from "../../transcript-rewind.js";
 import { isUserMessageEntry } from "./send-message-shaping.js";
 import { getTranscript } from "./transcript-store.js";
 import { classifyAgentError } from "./turn-runtime.js";
@@ -498,6 +505,137 @@ export class AgentLifecycle {
     await this.tm.runLifecycle.drainExclusiveRuns(agentId);
     await runner?.drainBackgroundSubagents();
     await groupRunner?.drainBackgroundSubagents();
+  }
+
+  async interruptAgentForRewind(agentId: string): Promise<void> {
+    const groupRunner =
+      this.tm.runnerRegistry.activeGroupMemberRunners.get(agentId);
+    const runner = this.tm.runnerRegistry.runners.get(agentId);
+    if (runner != null || groupRunner != null) {
+      const wasInFlight = this.tm.runLifecycle.runningAgentIds().has(agentId);
+      const hadGroup = groupRunner?.interruptAll("transcript rewind") ?? false;
+      const hadActiveRun =
+        (runner?.interruptAll("transcript rewind") ?? false) || hadGroup;
+      this.tm.telemetry.reportTurnInterrupt({
+        conversationId: agentId,
+        reason: "transcript_rewind",
+        hadActiveRun,
+        wasInFlight,
+      });
+    }
+    await this.tm.runLifecycle.drainExclusiveRuns(agentId);
+  }
+
+  async rewindTranscript(args: {
+    readonly agentId?: string;
+    readonly entryId?: string;
+  }): Promise<{ ok: true; transcript: unknown; droppedEntryIds: readonly string[] } | { ok: false; reason: string }> {
+    const agentId =
+      typeof args.agentId === "string" && args.agentId.length > 0
+        ? args.agentId
+        : this.tm.sessions.activeSession?.id;
+    const entryId = args.entryId;
+    if (typeof agentId !== "string" || agentId.length === 0 || typeof entryId !== "string" || entryId.length === 0) {
+      return { ok: false, reason: "missing-args" };
+    }
+    let session: any;
+    try {
+      session =
+        this.tm.sessions.activeSession?.id === agentId
+          ? this.tm.sessions.activeSession
+          : await this.tm.sessions.resolveBackgroundSession(agentId);
+    } catch {
+      return { ok: false, reason: "missing-entry" };
+    }
+    const readEntries = () => session.db.getTranscriptEntries();
+    const flagsOf = () => {
+      const structure = session.agentStore?.getConversationStateStructure?.();
+      const subagentStates = structure?.subagentStates ?? {};
+      const thread = session.db.getThread(entryId);
+      return {
+        isGroup: this.tm.groupChat.isGroupSession(session) === true,
+        isRemoteRoom: this.tm.groupChat.isRemoteRoomSession(session) === true,
+        hasSubagents:
+          (this.tm.runnerRegistry.runners.get(agentId)?.listSubagents?.().length ?? 0) > 0
+          || Object.keys(subagentStates).length > 0,
+        hasPendingTools: (structure?.pendingToolCalls?.length ?? 0) > 0,
+        threadDescendantCount: Math.max(0, (thread?.entries?.length ?? 0) - 1),
+      };
+    };
+    const result = await rewindTranscriptWithHooks({
+      agentId,
+      entryId,
+      readEntries,
+      getFlags: flagsOf,
+      interrupt: () => this.interruptAgentForRewind(agentId),
+      truncateConversation: async (plan) => {
+        const store = session.agentStore;
+        if (store == null || typeof store.getConversationStateStructure !== "function") {
+          throw new Error("conversation store is unavailable");
+        }
+        const live = store.getConversationStateStructure();
+        if (live == null || typeof live.toBinary !== "function") {
+          throw new Error("conversation store is unavailable");
+        }
+        const clone = ConversationStateStructure.fromBinary(live.toBinary());
+        const blobStore = typeof store.getBlobStore === "function" ? store.getBlobStore() : undefined;
+        if (blobStore == null) {
+          throw new Error("conversation blob store is unavailable");
+        }
+        const ctx = this.tm.ctx ?? {};
+        await truncateConversationStructure(
+          clone,
+          plan.anchor.id,
+          plan.droppedIds,
+          plan.kept.filter((entry) => isRewindableUserMessage(entry)).length,
+          blobStore,
+          ctx,
+        );
+        if (typeof store.handleCheckpoint !== "function") {
+          throw new Error("conversation checkpoint writer is unavailable");
+        }
+        await store.handleCheckpoint(ctx, clone);
+        const runner = this.tm.runnerRegistry.runners.get(agentId);
+        runner?.setAgentConversationStateStructure?.(clone);
+      },
+      truncateSqlite: async (plan) => {
+        session.db.truncateTranscriptFrom(plan.anchor.id);
+        session.db.setIntroductionPending(false);
+        return plan.droppedIds;
+      },
+      rebuildJournal: async (plan) => {
+        const journal = getSharedTranscriptJournal();
+        const store = session.agentStore;
+        const blobStore = typeof store?.getBlobStore === "function" ? store.getBlobStore() : {};
+        const structure = store?.getConversationStateStructure?.();
+        const turns = Array.isArray(structure?.turns) ? structure.turns : [];
+        if (journal != null && typeof journal.rebuildFromCheckpoint === "function") {
+          await journal.rebuildFromCheckpoint(this.tm.ctx ?? {}, agentId, { turns }, blobStore);
+        }
+        void plan;
+      },
+      emitSnapshot: async (plan) => {
+        const kept = [...plan.kept];
+        if (this.tm.sessions.activeSession?.id === agentId) {
+          this.tm.sessions.setActiveTranscript(agentId, kept);
+        }
+        this.tm.roster.emit({
+          type: "snapshot",
+          activeAgentId: agentId,
+          agentId,
+          entries: kept,
+        });
+        void this.tm.roster.emitAgentUpdate(agentId);
+      },
+    });
+    if (!result.ok) return result;
+    return {
+      ok: true,
+      transcript: this.tm.sessions.activeSession?.id === agentId
+        ? getTranscript()
+        : session.db.getTranscriptEntries(),
+      droppedEntryIds: result.droppedIds,
+    };
   }
 
   async updateAgent(agentId: string, profile: any): Promise<unknown> {

@@ -18,6 +18,7 @@ export const SAND_GATEWAY_COMMANDS = {
   dismissWidget: (api: GatewayApi, body: string) => api.dismissWidget(parseCommandArgs(body)),
   submitSecret: (api: GatewayApi, body: string) => api.submitSecret(parseCommandArgs(body)),
   reactToMessage: (api: GatewayApi, body: string) => api.reactToMessage(parseCommandArgs(body)),
+  rewindTranscript: (api: GatewayApi, body: string) => api.rewindTranscript(parseCommandArgs(body)),
   appendConnectorCard: (api: GatewayApi, body: string) => api.appendConnectorCard(parseCommandArgs(body)),
   listAgents: (api: GatewayApi) => api.listAgents(),
   countAgents: (api: GatewayApi) => api.countAgents(),

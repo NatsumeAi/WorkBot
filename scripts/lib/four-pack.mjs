@@ -17,17 +17,26 @@ export const RENDERER_OVERLAY_ROLES = Object.freeze({
 export const clientOverridesRoot = path.join(repoRoot, "source", "client-overrides");
 export const JUMP_TO_BOTTOM_OVERLAY = "assets/index-UbX-y3il.js";
 export const JUMP_TO_BOTTOM_MARKER = "__sandJumpToBottom";
+export const REWIND_FROM_HERE_MARKER = "__sandRewindFromHere";
 
 /** Official chat bundle (UbX) is an ES module; append a statement after its export list. */
-export async function appendJumpToBottom(ubxPath) {
-  const extraPath = path.join(clientOverridesRoot, "jump-to-bottom.js");
+export async function appendClientOverrideScript(ubxPath, fileName, marker) {
+  const extraPath = path.join(clientOverridesRoot, fileName);
   if (!existsSync(ubxPath) || !existsSync(extraPath)) return false;
   const extra = (await readFile(extraPath, "utf8")).trim();
-  if (!extra.includes(JUMP_TO_BOTTOM_MARKER)) return false;
+  if (!extra.includes(marker)) return false;
   const ubx = await readFile(ubxPath, "utf8");
-  if (ubx.includes(JUMP_TO_BOTTOM_MARKER)) return false;
+  if (ubx.includes(marker)) return false;
   await writeFile(ubxPath, `${ubx}\n${extra}\n`);
   return true;
+}
+
+export async function appendJumpToBottom(ubxPath) {
+  return appendClientOverrideScript(ubxPath, "jump-to-bottom.js", JUMP_TO_BOTTOM_MARKER);
+}
+
+export async function appendRewindFromHere(ubxPath) {
+  return appendClientOverrideScript(ubxPath, "rewind-from-here.js", REWIND_FROM_HERE_MARKER);
 }
 // GROK_BOT_CLIENT_UI_DIR lets concurrent processes (e.g. tests) own private
 // UI directories; packaging flows share the default.
@@ -187,6 +196,7 @@ export async function buildClientUi({ force = false } = {}) {
     await cp(rendererOverlayRoot, path.join(clientUiRoot, "renderer"), { recursive: true, dereference: false, preserveTimestamps: true });
   }
   await appendJumpToBottom(path.join(clientUiRoot, "renderer", JUMP_TO_BOTTOM_OVERLAY));
+  await appendRewindFromHere(path.join(clientUiRoot, "renderer", JUMP_TO_BOTTOM_OVERLAY));
   const routerSettings = path.join(clientUiRoot, "renderer", ROUTER_SETTINGS_OVERLAY);
   if (!existsSync(routerSettings) || !routerSettingsHasApi(await readFile(routerSettings, "utf8"))) {
     throw new Error(`Client-UI is missing the Windows Router settings page (${ROUTER_SETTINGS_OVERLAY}). Put the Windows truth under client-ui/renderer-overlay/.`);

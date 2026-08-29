@@ -50,6 +50,16 @@ function priorRootPromptCount(agentStore: unknown): number {
  * internals. One FileTranscriptMirror journal is shared by all runners from the
  * provider, while each runner receives its own legacy prior-root cursor.
  */
+let sharedTranscriptJournal:
+  | FileTranscriptMirror<TranscriptOccurrenceBlobStore>
+  | undefined;
+
+export function getSharedTranscriptJournal():
+  | FileTranscriptMirror<TranscriptOccurrenceBlobStore>
+  | undefined {
+  return sharedTranscriptJournal;
+}
+
 export function createProductionTranscriptMirrorProvider(
   inputs: ProductionTranscriptMirrorProviderInputs,
 ): CreateTranscriptMirror {
@@ -70,6 +80,7 @@ export function createProductionTranscriptMirrorProvider(
       options.reportOutcome,
       deriver,
     );
+    sharedTranscriptJournal = transcriptJournal;
     return transcriptJournal.routed(
       OffloadingTranscriptMirror.forTranscriptsDir(
         options.pool,

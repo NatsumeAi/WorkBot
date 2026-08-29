@@ -40,4 +40,25 @@ export class FileTranscriptMirror<Store = unknown> {
   commitCheckpoint(_ctx: unknown, id: string): Promise<unknown> { return this.serialize(id, () => this.withOutcomeReport("append", id, errno => SandError.journalAppendFailed({ errno }), async () => { const pending = await this.readPending(id), checkpoint = this.preparedCheckpoints.get(id); if (pending == null) throw new TranscriptJournalCorruptionError("prepared transcript WAL is missing at commit"); if (checkpoint == null || !this.preparedDeferredSteps.has(id)) throw new TranscriptJournalCorruptionError("prepared transcript checkpoint is missing in memory"); const deferred = this.preparedDeferredSteps.get(id) ?? undefined, state = await this.appendPending(id, pending); await this.writeDeferred(id, deferred); await this.removePending(id); this.preparedCheckpoints.delete(id); this.preparedDeferredSteps.delete(id); this.durableCheckpoints.set(id, checkpoint); if (deferred == null) this.deferredSteps.delete(id); else this.deferredSteps.set(id, deferred); return { entryCount: pending.lines.length, bytes: state.bytes - pending.appendOffset }; })); }
   abortCheckpoint(_ctx: unknown, id: string): Promise<void> { return this.serialize(id, async () => { this.preparedCheckpoints.delete(id); this.preparedDeferredSteps.delete(id); await this.removePending(id); }); }
   skipCheckpoint(_ctx: unknown, id: string, checkpoint: TranscriptCheckpoint, _store: Store): Promise<void> { return this.serialize(id, async () => { this.preparedCheckpoints.delete(id); this.preparedDeferredSteps.delete(id); this.deferredSteps.delete(id); await this.removePending(id); await this.writeDeferred(id); this.durableCheckpoints.set(id, checkpoint); }); }
+  /**
+   * Journal is append-only. Rewind installs a new jsonl from deriver.initial()
+   * of a shorter checkpoint; the previous file is replaced only after the new
+   * bytes are synced. Failure leaves the original jsonl in place.
+   */
+  rebuildFromCheckpoint(ctx: unknown, id: string, checkpoint: TranscriptCheckpoint, store: Store): Promise<void> {
+    return this.serialize(id, () => this.withOutcomeReport("rebuild", id, errno => SandError.journalReplayFailed({ errno }), async () => {
+      await this.removePending(id);
+      await this.writeDeferred(id);
+      this.preparedCheckpoints.delete(id);
+      this.preparedDeferredSteps.delete(id);
+      this.deferredSteps.delete(id);
+      const occurrences = checkpoint.turns.length === 0 ? [] : await this.requireDeriver().initial(ctx, store, checkpoint);
+      const bytes = Buffer.from(occurrences.map((entry) => `${entry.line}\n`).join(""));
+      await this.installAtomic(this.jsonlPathFor(id), bytes);
+      const identity = fileIdentity(await stat(this.jsonlPathFor(id)));
+      this.states.set(id, { bytes: identity.size, device: identity.device, inode: identity.inode });
+      this.durableCheckpoints.set(id, checkpoint);
+      return { entryCount: occurrences.length, bytes: bytes.byteLength };
+    }));
+  }
 }

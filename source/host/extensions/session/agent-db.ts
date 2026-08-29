@@ -250,6 +250,27 @@ export class SandAgentDb {
   appendTranscriptEntries(entries: readonly TranscriptEntry[]): boolean { if (!entries.length) return true; const inserted: TranscriptEntry[] = []; const committed = this.runWrite("appendTranscriptEntries", () => { this.db.exec("BEGIN IMMEDIATE"); try { for (const entry of entries) if (Number((this.statements.insertTranscriptEntry!.run(entry.id, JSON.stringify(entry)) as { changes?: unknown }).changes) > 0) inserted.push(entry); this.db.exec("COMMIT"); } catch (error) { this.db.exec("ROLLBACK"); throw error; } }); if (committed && inserted.length) publishTranscriptMutation({ kind: "entries-upserted", agentId: this.agentDirName, entries: inserted }); return committed; }
   updateTranscriptEntry(id: string, update: (entry: TranscriptEntry) => TranscriptEntry): TranscriptEntry | null { const current = this.getEntryById(id); if (current == null) return null; const next = update(current); const committed = this.runWrite("updateTranscriptEntry", () => { this.statements.updateTranscriptEntry!.run(JSON.stringify(next), id); }); if (!committed) return null; publishTranscriptMutation({ kind: "entries-upserted", agentId: this.agentDirName, entries: [next] }); return next; }
   deleteTranscriptEntry(id: string): boolean { const committed = this.runWrite("deleteTranscriptEntry", () => { this.statements.deleteTranscriptEntry!.run(id); }); if (committed) publishTranscriptMutation({ kind: "entry-deleted", agentId: this.agentDirName, entryId: id }); return committed; }
+  truncateTranscriptFrom(id: string): boolean {
+    if (this.closed) return false;
+    const row = this.statements.getTranscriptEntry!.get(id) as { entry?: unknown } | undefined;
+    if (row == null) return false;
+    const committed = this.runWrite("truncateTranscriptFrom", () => {
+      this.db.exec("BEGIN IMMEDIATE");
+      try {
+        this.db.prepare("DELETE FROM transcript_entries WHERE seq >= (SELECT seq FROM transcript_entries WHERE id = ?)").run(id);
+        this.statements.deleteKv!.run(KV.awaiting);
+        this.statements.deleteKv!.run(KV.episode);
+        this.db.exec("COMMIT");
+      } catch (error) {
+        this.db.exec("ROLLBACK");
+        throw error;
+      }
+    });
+    if (!committed) return false;
+    publishTranscriptMutation({ kind: "agent-needs-reindex", agentId: this.agentDirName });
+    this.notify(this.awaitingListeners);
+    return true;
+  }
 
   getPendingEpisodeTurns() { return parsePendingEpisodeTurns(this.readKv(KV.episode)); }
   recordEpisodeTurn(turn: { ts: number; user: string; agent: string }): void { const capped = { ts: turn.ts, user: turn.user.slice(0, EPISODE_TURN_TEXT_CAP), agent: turn.agent.slice(0, EPISODE_TURN_TEXT_CAP) }; this.writeKv(KV.episode, JSON.stringify([...this.getPendingEpisodeTurns(), capped].slice(-EPISODE_PENDING_MAX))); }

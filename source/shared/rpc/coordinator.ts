@@ -102,6 +102,7 @@ export const COORDINATOR_METHOD_TABLE = {
   dismissWidget: { args: "object", reply: "record" },
   submitSecret: { args: "object", reply: "void" },
   reactToMessage: { args: "object", reply: "void" },
+  rewindTranscript: { args: "object", reply: "record" },
   listAgents: { args: "none", reply: "array" },
   countAgents: { args: "none", reply: "count" },
   searchAgents: { args: "object", reply: "array" },

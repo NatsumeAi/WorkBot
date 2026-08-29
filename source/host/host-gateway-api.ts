@@ -259,6 +259,10 @@ export function createHostGatewayApi(
         args.agentId
       );
     },
+    rewindTranscript: async (args: any) => {
+      markActive("user_action");
+      return method(manager, "rewindTranscript")(args);
+    },
     appendConnectorCard: (args: any) =>
       method(manager, "appendConnectorCard")(args),
 
