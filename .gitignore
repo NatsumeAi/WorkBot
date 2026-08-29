@@ -10,11 +10,30 @@ node_modules/
 .DS_Store
 *.log
 
+# Local env and secrets. Never ship keys or machine credentials.
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+auth.json
+credentials.json
+secrets.json
+
+# AI / editor-agent local state. Keep product source; do not upload chats or rules caches.
+.cursor/
+.grok-local/
+.grok-*/
+.claude/
+.codex/
+.aider*
+.windsurf/
+.continue/
+.mcp.json
+.mcp-*/
+
 # Machine-local harness and inspection scratch.
 /.tmp*/
-/.grok-*/
-/.cursor/rules/baseline-architecture.mdc
-/.cursor/rules/openbot-fix-queue.mdc
 /opencode.json
 /preload.cjs
 /targets/android/sideload.keystore
@@ -36,12 +55,6 @@ node_modules/
 /xlsx-*.js
 /index.html
 
-# Android web-shell staging and Gradle output (generated from the shared client-UI).
-/targets/android/www/
-/targets/android/app/build/
-/targets/android/app/src/main/assets/www/
-/targets/android/.gradle/
-/targets/android/build/
 # Android web-shell staging and Gradle output (generated from the shared client-UI).
 /targets/android/www/
 /targets/android/app/build/
