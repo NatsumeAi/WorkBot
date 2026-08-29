@@ -8,6 +8,14 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
+import {
+  asarSyncLinuxHost,
+  asarSyncLinuxMain,
+  asarSyncLinuxPanel,
+  asarSyncLinuxUbx,
+  asarSyncWinMain,
+  skipUnlessAllExist,
+} from "./harness/optional-pack.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -184,12 +192,21 @@ test("unsigned reconnect without a saved file parks as no_server instead of hitt
   );
 });
 
-test("packed electron-main keeps one desktop root, one credential file, and the reconnect order", async () => {
-  const main = await readFile("/tmp/openbot-asar-sync/linux/dist/electron-main/main.cjs", "utf8");
-  const winMain = await readFile("/tmp/openbot-asar-sync/win-full/dist/electron-main/main.cjs", "utf8");
-  const host = await readFile("/tmp/openbot-asar-sync/linux/dist/host/host-main.cjs", "utf8");
-  const panel = await readFile("/tmp/openbot-asar-sync/linux/dist/renderer/assets/index-BlqerJhg.js", "utf8");
-  const boot = await readFile("/tmp/openbot-asar-sync/linux/dist/renderer/assets/index-UbX-y3il.js", "utf8");
+test("packed electron-main keeps one desktop root, one credential file, and the reconnect order", async (t) => {
+  if (
+    skipUnlessAllExist(
+      t,
+      [asarSyncLinuxMain, asarSyncWinMain, asarSyncLinuxHost, asarSyncLinuxPanel, asarSyncLinuxUbx],
+      "unpacked asar sync missing; run pack:all",
+    )
+  ) {
+    return;
+  }
+  const main = await readFile(asarSyncLinuxMain, "utf8");
+  const winMain = await readFile(asarSyncWinMain, "utf8");
+  const host = await readFile(asarSyncLinuxHost, "utf8");
+  const panel = await readFile(asarSyncLinuxPanel, "utf8");
+  const boot = await readFile(asarSyncLinuxUbx, "utf8");
   assert.match(main, /SAND_PRODUCTION_DATA_DIRNAME = "\.openbot"/);
   assert.match(main, /if \(isSandLabBuild\(\)\) return/);
   assert.match(main, /join\)\(homeDir, "\.grokbot"\)/);

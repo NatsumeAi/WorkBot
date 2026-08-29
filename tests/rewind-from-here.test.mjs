@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { packedLinuxAsar, skipUnlessExists } from "./harness/optional-pack.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const rewindSource = path.join(repoRoot, "source", "client-overrides", "rewind-from-here.js");
@@ -100,11 +100,10 @@ test("appendRewindFromHere writes the marker once onto a fake UbX module", async
   }
 });
 
-test("packed linux asar UbX includes 从这里重来 on the official chat bundle", async () => {
+test("packed linux asar UbX includes 从这里重来 on the official chat bundle", async (t) => {
+  if (skipUnlessExists(t, packedLinuxAsar, "packed linux asar missing; run pack:all")) return;
   const { extractFile } = await import("@electron/asar");
-  const asar = path.join(repoRoot, "dist/workbot-linux-x64/resources/app.asar");
-  assert.equal(existsSync(asar), true, "packed linux asar missing; run pack:all");
-  const packed = extractFile(asar, "dist/renderer/assets/index-UbX-y3il.js").toString("utf8");
+  const packed = extractFile(packedLinuxAsar, "dist/renderer/assets/index-UbX-y3il.js").toString("utf8");
   assert.match(packed, /void function __sandRewindFromHere/);
   assert.match(packed, /从这里重来/);
   assert.match(packed, /rewindTranscript/);

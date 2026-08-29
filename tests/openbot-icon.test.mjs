@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  packedLinuxRoot,
+  packedWindowsExe,
+  skipUnlessExists,
+} from "./harness/optional-pack.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const master = path.join(repoRoot, "branding/openbot-icon.png");
@@ -57,32 +62,30 @@ function icoPngMarker() {
   return ico.subarray(last, last + 64);
 }
 
-test("packed linux shell uses branding icon next to the binary, not only beside asar", () => {
-  const linuxRoot = path.join(repoRoot, "dist/workbot-linux-x64");
-  const besideBinary = path.join(linuxRoot, "icon.png");
-  const besideAsar = path.join(linuxRoot, "resources/icon.png");
-  assert.equal(existsSync(besideBinary), true, "packed linux binary-dir icon missing; run pack:all");
-  assert.equal(existsSync(besideAsar), true, "packed linux resources/icon.png missing; run pack:all");
+test("packed linux shell uses branding icon next to the binary, not only beside asar", (t) => {
+  const besideBinary = path.join(packedLinuxRoot, "icon.png");
+  const besideAsar = path.join(packedLinuxRoot, "resources/icon.png");
+  if (skipUnlessExists(t, besideBinary, "packed linux binary-dir icon missing; run pack:all")) return;
+  if (skipUnlessExists(t, besideAsar, "packed linux resources/icon.png missing; run pack:all")) return;
   const { width, height } = pngSize(readFileSync(besideBinary));
   assert.equal(width, 1024);
   assert.equal(height, 1024);
   assert.equal(readFileSync(besideBinary).equals(readFileSync(besideAsar)), true);
 });
 
-test("packed windows exe embeds branding ico instead of stock Electron", () => {
-  const exe = path.join(repoRoot, "dist/workbot-win32-x64/workbot.exe");
-  assert.equal(existsSync(exe), true, "packed windows exe missing; run pack:all");
-  const bytes = readFileSync(exe);
+test("packed windows exe embeds branding ico instead of stock Electron", (t) => {
+  if (skipUnlessExists(t, packedWindowsExe, "packed windows exe missing; run pack:all")) return;
+  const bytes = readFileSync(packedWindowsExe);
   const marker = icoPngMarker();
   assert.equal(bytes.includes(marker), true, "workbot.exe still has the default Electron icon");
 });
 
-test("embedWindowsExeIcon writes branding ico into a PE copy", async () => {
+test("embedWindowsExeIcon writes branding ico into a PE copy", async (t) => {
   const { mkdtemp, copyFile, rm } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const { embedWindowsExeIcon } = await import(pathToFileURL(path.join(repoRoot, "scripts/lib/embed-app-icon.mjs")).href);
-  const src = path.join(repoRoot, "dist/workbot-win32-x64/workbot.exe");
-  assert.equal(existsSync(src), true, "need a packed windows exe to copy");
+  if (skipUnlessExists(t, packedWindowsExe, "need a packed windows exe to copy")) return;
+  const src = packedWindowsExe;
   const dir = await mkdtemp(path.join(tmpdir(), "workbot-ico-"));
   const copy = path.join(dir, "workbot.exe");
   try {

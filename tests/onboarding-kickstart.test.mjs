@@ -32,7 +32,7 @@ test("SendMessage delivery is counted on the turn emit path, not only transport"
   const lifecycle = await readFile(path.join(repoRoot, "source/host/extensions/transcript/agent-lifecycle.ts"), "utf8");
   const gateway = await readFile(path.join(repoRoot, "source/host/host-gateway-api.ts"), "utf8");
   assert.match(lifecycle, /entry\.kind === "send-message" \|\| isUserMessageEntry\(entry\)/);
-  assert.match(lifecycle, /sentMessageCount > 0\s*\|\|\s*session\.db\.getTranscriptEntries\(\)\.some\(\(entry\) => entry\.kind === "send-message"\)/);
+  assert.match(lifecycle, /sentMessageCount > 0\s*\|\|\s*session\.db\.getTranscriptEntries\(\)\.some\(\(entry: TranscriptEntry\) => entry\.kind === "send-message"\)/);
   assert.match(gateway, /void deps\.kickstartIfPending\(args\.id\)/);
   const turn = await readFile(path.join(repoRoot, "source/host/extensions/transcript/turn-runtime.ts"), "utf8");
   assert.match(turn, /sendMessageBefore = countSendMessageEntries/);

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { packedLinuxAsar, skipUnlessExists } from "./harness/optional-pack.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const jumpSource = path.join(repoRoot, "source/client-overrides/jump-to-bottom.js");
@@ -74,11 +74,10 @@ test("appendJumpToBottom writes the marker once onto a fake UbX module", async (
   }
 });
 
-test("packed linux asar UbX includes the jump-to-bottom marker", async () => {
+test("packed linux asar UbX includes the jump-to-bottom marker", async (t) => {
+  if (skipUnlessExists(t, packedLinuxAsar, "packed linux asar missing; run pack:all")) return;
   const { extractFile } = await import("@electron/asar");
-  const asar = path.join(repoRoot, "dist/workbot-linux-x64/resources/app.asar");
-  assert.equal(existsSync(asar), true, "packed linux asar missing; run pack:all");
-  const packed = extractFile(asar, "dist/renderer/assets/index-UbX-y3il.js").toString("utf8");
+  const packed = extractFile(packedLinuxAsar, "dist/renderer/assets/index-UbX-y3il.js").toString("utf8");
   assert.match(packed, /void function __sandJumpToBottom/);
   assert.match(packed, /跳到最新/);
   const overlay = packed.slice(packed.indexOf("void function __sandJumpToBottom"));

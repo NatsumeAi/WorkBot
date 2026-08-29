@@ -5,6 +5,12 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
+import {
+  asarSyncLinuxHost,
+  asarSyncLinuxMain,
+  asarSyncLinuxUbx,
+  skipUnlessAllExist,
+} from "./harness/optional-pack.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -173,7 +179,7 @@ test("unsigned roster slot local fetches listAgents; null slot does not", async 
   gated.dispose();
 });
 
-test("source and packed host keep this-turn delta; router save requires box ack", async () => {
+test("source host keep this-turn delta; router save requires box ack", async () => {
   const turn = await readFile(
     path.join(repoRoot, "source/host/extensions/transcript/turn-runtime.ts"),
     "utf8",
@@ -190,13 +196,21 @@ test("source and packed host keep this-turn delta; router save requires box ack"
     edge,
     /inferenceEndpoints: publicInferenceEndpointsDocument\(merged\) \}\)\.catch\(\(\) => null\)/,
   );
+});
 
-  const host = await readFile("/tmp/openbot-asar-sync/linux/dist/host/host-main.cjs", "utf8");
-  const main = await readFile("/tmp/openbot-asar-sync/linux/dist/electron-main/main.cjs", "utf8");
-  const boot = await readFile(
-    "/tmp/openbot-asar-sync/linux/dist/renderer/assets/index-UbX-y3il.js",
-    "utf8",
-  );
+test("packed host keep this-turn delta; router save requires box ack", async (t) => {
+  if (
+    skipUnlessAllExist(
+      t,
+      [asarSyncLinuxHost, asarSyncLinuxMain, asarSyncLinuxUbx],
+      "unpacked asar sync missing; run pack:all",
+    )
+  ) {
+    return;
+  }
+  const host = await readFile(asarSyncLinuxHost, "utf8");
+  const main = await readFile(asarSyncLinuxMain, "utf8");
+  const boot = await readFile(asarSyncLinuxUbx, "utf8");
   assert.match(host, /const sendMessageBefore = session\.db\.getTranscriptEntries\(\)\.filter\(\(entry\) => entry\.kind === "send-message"\)\.length/);
   assert.match(host, /if \(!delivered && latest\.endedOnSilentToolCalls === true/);
   assert.match(host, /entry\.kind === "send-message" \|\| isUserMessageEntry\(entry\)/);

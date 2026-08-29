@@ -6,6 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { extractFile } from "@electron/asar";
+import { packedLinuxAsar, skipUnlessExists } from "./harness/optional-pack.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -93,10 +94,10 @@ test("unsigned Add still works when Cursor account servers are missing", async (
   }
 });
 
-test("packed asar installs marketplace plugins without a Cursor account writer", async () => {
-  const packedPath = path.join(repoRoot, "dist/workbot-linux-x64/resources/app.asar");
-  const main = extractFile(packedPath, "dist/electron-main/main.cjs").toString("utf8");
-  const host = extractFile(packedPath, "dist/host/host-main.cjs").toString("utf8");
+test("packed asar installs marketplace plugins without a Cursor account writer", async (t) => {
+  if (skipUnlessExists(t, packedLinuxAsar, "packed linux asar missing; run pack:all")) return;
+  const main = extractFile(packedLinuxAsar, "dist/electron-main/main.cjs").toString("utf8");
+  const host = extractFile(packedLinuxAsar, "dist/host/host-main.cjs").toString("utf8");
   for (const [label, source] of [["main", main], ["host", host]]) {
     assert.ok(source.includes("mcp-local-installs.json"), `packed ${label} missing local installs file`);
     assert.ok(source.includes("__sandLM.installFromCatalog"), `packed ${label} missing unsigned install path`);

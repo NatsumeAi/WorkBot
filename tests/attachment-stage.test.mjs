@@ -7,6 +7,12 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
+import {
+  packedAndroidApk,
+  packedLinuxAsar,
+  packedWindowsAsar,
+  skipUnlessAllExist,
+} from "./harness/optional-pack.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -217,19 +223,22 @@ test("Android/web stageBytes + commitStaged accept the same clones and POST byte
   assert.equal(Buffer.from(uploads[0].args.bytesBase64, "base64").toString("utf8"), "hello-file");
 });
 
-test("packed linux, windows, and android encode attachments as bytesBase64; linux asar equals windows asar", async () => {
-  const { extractFile } = await import("@electron/asar");
-  const linuxAsar = path.join(repoRoot, "dist/workbot-linux-x64/resources/app.asar");
-  const windowsAsar = path.join(repoRoot, "dist/workbot-win32-x64/resources/app.asar");
-  const apk = path.join(repoRoot, "dist/workbot-android.apk");
-  let linux;
-  let windows;
-  try {
-    linux = await readFile(linuxAsar);
-    windows = await readFile(windowsAsar);
-  } catch {
-    assert.fail("packed linux/windows asar missing; pack after the attach fix");
+test("packed linux, windows, and android encode attachments as bytesBase64; linux asar equals windows asar", async (t) => {
+  if (
+    skipUnlessAllExist(
+      t,
+      [packedLinuxAsar, packedWindowsAsar, packedAndroidApk],
+      "packed linux/windows asar or android apk missing; run pack:all",
+    )
+  ) {
+    return;
   }
+  const { extractFile } = await import("@electron/asar");
+  const linuxAsar = packedLinuxAsar;
+  const windowsAsar = packedWindowsAsar;
+  const apk = packedAndroidApk;
+  const linux = await readFile(linuxAsar);
+  const windows = await readFile(windowsAsar);
   assert.equal(linux.length, windows.length, "linux and windows asar must be the same payload (macos uses this asar)");
   assert.deepEqual(linux, windows, "linux and windows asar bytes must match; macos is treated like linux");
   const ubx = extractFile(linuxAsar, "dist/renderer/assets/index-UbX-y3il.js").toString("utf8");

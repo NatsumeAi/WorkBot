@@ -5,6 +5,11 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
+import {
+  asarSyncLinuxHost,
+  packedLinuxAsar,
+  skipUnlessAllExist,
+} from "./harness/optional-pack.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -97,16 +102,25 @@ test("deleteAgents returns after the bot is gone even if box window teardown nev
   );
   assert.match(gateway, /void deps\.releaseAgentBox\(id\)/);
   assert.match(gateway, /void deps\.releaseAgentBox\(args\.id\)/);
+});
 
-  const host = await readFile("/tmp/openbot-asar-sync/linux/dist/host/host-main.cjs", "utf8");
+test("packed host asar keeps fire-and-forget deleteAgents", async (t) => {
+  if (
+    skipUnlessAllExist(
+      t,
+      [asarSyncLinuxHost, packedLinuxAsar],
+      "packed linux asar missing; run pack:all",
+    )
+  ) {
+    return;
+  }
+  const host = await readFile(asarSyncLinuxHost, "utf8");
   assert.match(host, /void deps\.releaseAgentBox\(id\)/);
   assert.match(host, /void deps\.releaseAgentBox\(args\.id\)/);
   assert.doesNotMatch(host, /await deps\.releaseAgentBox\(id\)/);
   assert.doesNotMatch(host, /await deps\.releaseAgentBox\(args\.id\)/);
 
-  const packedLinux = await readFile(
-    path.join(repoRoot, "dist/workbot-linux-x64/resources/app.asar"),
-  );
+  const packedLinux = await readFile(packedLinuxAsar);
   assert.ok(
     packedLinux.includes(Buffer.from("void deps.releaseAgentBox(id)")),
     "packed linux asar missing fire-and-forget deleteAgents",
