@@ -26,6 +26,7 @@ official Grok Bot release. See [NOTICE.md](NOTICE.md) and
 Chat works with custom API keys or a self-hosted gateway; Cursor login is not
 required for that path. Outbound proxy is **Off** (direct) or a **Custom URL**
 you paste. `127.0.0.1` / `localhost` always go direct so local APIs work.
+<img width="1842" height="1324" alt="image" src="https://github.com/user-attachments/assets/5988ac93-a406-4c27-b10b-25a5d8b46e87" />
 
 ## Architecture
 
