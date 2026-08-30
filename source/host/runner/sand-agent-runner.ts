@@ -798,7 +798,7 @@ export class SandAgentRunner<T = unknown> {
     return this.subagents.steerSubagent(id, message);
   }
 
-  abortSubagent(id: string) {
+  abortSubagent(id: string): "aborted" | "not-running" | string {
     return this.subagents.abortSubagent(id);
   }
 
@@ -1128,16 +1128,17 @@ export class SandAgentRunner<T = unknown> {
     reason: string,
     supersede?: { readonly carriesRecovery: boolean },
   ): boolean {
+    const stoppedChildren = this.subagents.abortAllBackgroundSubagents(reason);
     if (this.#productionTurnRunShell !== undefined) {
-      return this.#productionTurnRunShell.interrupt(reason, supersede);
+      return this.#productionTurnRunShell.interrupt(reason, supersede) || stoppedChildren;
     }
     const active = this.#activeRun;
-    if (active == null) return false;
+    if (active == null) return stoppedChildren;
     if (
       !active.dispatched
       && supersede != null
       && (!supersede.carriesRecovery || !active.recoveryShaped)
-    ) return false;
+    ) return stoppedChildren;
 
     this.#activeRunInterrupted = true;
     active.controller.abort({ intentional: true, reason });
@@ -1163,11 +1164,7 @@ export class SandAgentRunner<T = unknown> {
   }
 
   interruptAll(reason: string): boolean {
-    const interrupted = this.interrupt(reason);
-    for (const session of this.subagents.sessions.values()) {
-      session.interrupt(reason);
-    }
-    return interrupted;
+    return this.interrupt(reason);
   }
 
   drainBackgroundSubagents(): Promise<void> {

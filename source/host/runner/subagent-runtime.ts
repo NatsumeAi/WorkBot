@@ -290,10 +290,11 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
     }
 
     pendingSubagentSteers.delete(subagentAgentId);
-    const aborted = abortingSubagents.delete(subagentAgentId);
+    const requestedAbort = abortingSubagents.delete(subagentAgentId);
+    const aborted = requestedAbort || outcome.status === "aborted";
     const record = subagentRegistry.get(subagentAgentId);
     if (record != null) {
-      record.status = aborted || outcome.status === "aborted"
+      record.status = aborted
         ? "aborted"
         : outcome.status === "completed"
           ? "done"
@@ -384,9 +385,7 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
         ? outcome.text.trim().length > 0
           ? outcome.text.trim()
           : "(the task finished without producing any text output)"
-        : outcome.status === "aborted"
-          ? "The background task was interrupted before it finished."
-          : outcome.error,
+        : outcome.error,
       ...(meta.quietOrigin == null ? {} : { quietOrigin: meta.quietOrigin }),
     });
   }
@@ -440,7 +439,7 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
 
   function abortSubagent(
     subagentAgentId: string,
-  ): "ok" | "not-running" {
+  ): "aborted" | "not-running" {
     const runner = subagentSessions.get(subagentAgentId);
     if (runner == null || !backgroundSubagentRuns.has(subagentAgentId)) {
       return "not-running";
@@ -456,9 +455,18 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
         workId: subagentAgentId,
       });
     }
+    host.computerUse.freeWindow(subagentAgentId);
     host.emitAsyncTasksChanged();
     runner.interrupt("Stopped by the parent agent.");
-    return "ok";
+    return "aborted";
+  }
+
+  function abortAllBackgroundSubagents(_reason: string): boolean {
+    let any = false;
+    for (const id of [...backgroundSubagentRuns.keys()]) {
+      if (abortSubagent(id) === "aborted") any = true;
+    }
+    return any;
   }
 
   function listSubagents() {
@@ -499,6 +507,7 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
     getRunningSubagent,
     steerSubagent,
     abortSubagent,
+    abortAllBackgroundSubagents,
     listSubagents,
     hasSubagent: (id: string): boolean => subagentRegistry.has(id),
     hasRunningSubagents(): boolean {

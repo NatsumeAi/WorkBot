@@ -97,6 +97,17 @@ export class CompletionRevivals {
   constructor(readonly tm: TranscriptManagerLike) {}
 
   handleBackgroundSubagentCompletion(completion: SubagentCompletion): void {
+    if (completion.status === "aborted") {
+      this.tm.telemetry.reportSubagentRevival({
+        parentAgentId: completion.parentAgentId,
+        outcome: "dropped",
+        completionCount: 1,
+        subagentType: completion.subagentType,
+        subagentAgentId: completion.subagentAgentId,
+        reason: "aborted",
+      });
+      return;
+    }
     if (this.tm.sessions.deletedAgentIds.has(completion.parentAgentId)) {
       this.tm.telemetry.reportSubagentRevival({
         parentAgentId: completion.parentAgentId,

@@ -403,6 +403,7 @@ export interface TurnRunShellHost {
       string,
       { interrupt(reason: string): void }
     >;
+    abortAllBackgroundSubagents?(reason: string): boolean;
   };
   getConversationId(): string;
   runGeneration(): number;
@@ -480,14 +481,16 @@ export function createTurnRunShell(host: TurnRunShellHost) {
     reason: string,
     supersede?: { readonly carriesRecovery: boolean },
   ): boolean {
+    const stoppedChildren =
+      host.subagents.abortAllBackgroundSubagents?.(reason) === true;
     const run = activeRun;
-    if (run == null) return false;
+    if (run == null) return stoppedChildren;
     if (
       !run.dispatched
       && supersede != null
       && (!supersede.carriesRecovery || !run.recoveryShaped)
     ) {
-      return false;
+      return stoppedChildren;
     }
     host.setActiveRunInterrupted(true);
     cancelRun(run, { intentional: true, reason });
@@ -524,11 +527,7 @@ export function createTurnRunShell(host: TurnRunShellHost) {
   }
 
   function interruptAll(reason: string): boolean {
-    const interrupted = interrupt(reason);
-    for (const subagent of host.subagents.sessions.values()) {
-      subagent.interrupt(reason);
-    }
-    return interrupted;
+    return interrupt(reason);
   }
 
   async function run(
