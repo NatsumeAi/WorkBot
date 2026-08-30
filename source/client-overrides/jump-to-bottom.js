@@ -36,6 +36,7 @@ void function __sandJumpToBottom() {
 
   const doc = globalThis.document;
   if (doc == null) return;
+  try {
 
   const STYLE_ID = "sand-jump-bottom-style";
   const BUTTON_CLASS = "sand-jump-bottom";
@@ -157,4 +158,7 @@ html.dark .${BUTTON_CLASS}{
   new MutationObserver(schedule).observe(doc.documentElement, { childList: true, subtree: true });
   if (doc.readyState === "loading") doc.addEventListener("DOMContentLoaded", schedule);
   else schedule();
+  } catch {
+    return;
+  }
 }();

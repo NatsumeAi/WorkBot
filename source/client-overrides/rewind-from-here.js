@@ -1,4 +1,5 @@
 void function __sandRewindFromHere() {
+  try {
   const COPY = "从这里重来";
   const NOTICE = "对话从这里重来。不会撤销已经做过的 Shell / 文件 / 浏览器操作。";
   const MENU_LABEL = "Message actions";
@@ -24,6 +25,14 @@ void function __sandRewindFromHere() {
     return menu != null && typeof menu.getAttribute === "function" && menu.getAttribute("aria-label") === MENU_LABEL;
   }
 
+  function isInRowMenu(menu) {
+    return menu != null && typeof menu.closest === "function" && menu.closest(ROW_SELECTOR) != null;
+  }
+
+  function shouldInjectIntoMenu(menu) {
+    return isRewindMenu(menu) && !isInRowMenu(menu);
+  }
+
   function rowFromTarget(target) {
     if (target == null || typeof target.closest !== "function") return null;
     const anchor = target.closest(".sand-message-action-anchor") ?? target;
@@ -37,6 +46,8 @@ void function __sandRewindFromHere() {
     isUserRow,
     shouldShowRewind,
     isRewindMenu,
+    isInRowMenu,
+    shouldInjectIntoMenu,
     rowFromTarget,
     entryIdFromRow,
     menuHasRewind(menu) {
@@ -84,20 +95,17 @@ void function __sandRewindFromHere() {
     }
   }
 
+  let hooked = false;
   function hookCoordinatorClaim() {
+    if (hooked) return;
     const bridge = globalThis.coordinatorPort;
-    if (bridge == null || typeof bridge.claim !== "function" || bridge.__sandRewindHooked === true) return;
-    const original = bridge.claim.bind(bridge);
-    bridge.claim = function (consumer) {
-      return original({
-        onPort(next) {
-          capturePort(next);
-          consumer.onPort(next);
-        },
-      });
-    };
-    bridge.__sandRewindHooked = true;
+    if (bridge == null || typeof bridge.subscribePort !== "function") return;
+    bridge.subscribePort(capturePort);
+    hooked = true;
   }
+
+  globalThis.__sandRewindLogic.hookCoordinatorClaim = hookCoordinatorClaim;
+  globalThis.__sandRewindLogic.capturedPort = () => port;
 
   function rewindTranscript(agentId, entryId) {
     if (port == null || typeof port.postMessage !== "function") {
@@ -123,7 +131,7 @@ void function __sandRewindFromHere() {
   }
 
   function injectItem(menu) {
-    if (!isRewindMenu(menu)) return;
+    if (!shouldInjectIntoMenu(menu)) return;
     if (menu.querySelector(`[${ITEM_ATTR}]`) != null) return;
     const row = lastRow;
     const entryId = entryIdFromRow(row);
@@ -156,7 +164,15 @@ void function __sandRewindFromHere() {
   doc.addEventListener("contextmenu", rememberRow, true);
   const observer = new globalThis.MutationObserver(() => {
     hookCoordinatorClaim();
-    for (const menu of doc.querySelectorAll(`[aria-label="${MENU_LABEL}"]`)) injectItem(menu);
+    observer.disconnect();
+    try {
+      for (const menu of doc.querySelectorAll(`[aria-label="${MENU_LABEL}"]`)) injectItem(menu);
+    } finally {
+      observer.observe(doc.documentElement, { childList: true, subtree: true });
+    }
   });
   observer.observe(doc.documentElement, { childList: true, subtree: true });
+  } catch {
+    return;
+  }
 }();

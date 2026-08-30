@@ -48,6 +48,27 @@ test("rewind menu is only offered on the user's own message row", async () => {
   );
 });
 
+test("rewind does not append into a Message actions menu that still sits inside a transcript row", async () => {
+  const logic = await loadLogic();
+  assert.equal(typeof logic.shouldInjectIntoMenu, "function");
+  assert.equal(typeof logic.isInRowMenu, "function");
+  const rowMenu = {
+    getAttribute: (name) => (name === "aria-label" ? "Message actions" : null),
+    closest: (selector) => (selector === "[data-entry-id], [data-row-key]" ? { id: "row" } : null),
+  };
+  const portaledMenu = {
+    getAttribute: (name) => (name === "aria-label" ? "Message actions" : null),
+    closest: () => null,
+  };
+  assert.equal(logic.isRewindMenu(rowMenu), true);
+  assert.equal(logic.isInRowMenu(rowMenu), true);
+  assert.equal(logic.shouldInjectIntoMenu(rowMenu), false);
+  assert.equal(logic.shouldInjectIntoMenu(portaledMenu), true);
+  const source = await readFile(rewindSource, "utf8");
+  assert.match(source, /shouldInjectIntoMenu/);
+  assert.match(source, /observer\.disconnect/);
+});
+
 test("official right-click row is data-row-key without --menu-open or data-entry-id", async () => {
   const logic = await loadLogic();
   assert.equal(typeof logic.rowFromTarget, "function");
@@ -100,6 +121,84 @@ test("appendRewindFromHere writes the marker once onto a fake UbX module", async
   }
 });
 
+test("rewind sidecar does not throw when coordinatorPort.claim is a frozen contextBridge property", async () => {
+  const source = await readFile(rewindSource, "utf8");
+  assert.doesNotMatch(source, /bridge\.claim\s*=/);
+  assert.doesNotMatch(source, /\.claim\s*=\s*function/);
+  assert.match(source, /subscribePort/);
+  const bridge = {};
+  Object.defineProperty(bridge, "claim", {
+    value: () => null,
+    writable: false,
+    configurable: false,
+  });
+  const sandbox = {
+    globalThis: {
+      coordinatorPort: bridge,
+      document: {
+        addEventListener() {},
+        querySelectorAll() { return []; },
+        documentElement: {},
+        readyState: "complete",
+      },
+      MutationObserver: class {
+        observe() {}
+        disconnect() {}
+      },
+    },
+  };
+  sandbox.globalThis.globalThis = sandbox.globalThis;
+  assert.doesNotThrow(() => new Function("globalThis", source)(sandbox.globalThis));
+});
+
+test("rewind captures the coordinator port through subscribePort, not by rewriting claim", async () => {
+  const source = await readFile(rewindSource, "utf8");
+  const brokerSource = await readFile(
+    path.join(repoRoot, "source/electron-preload/coordinator-port-bridge.ts"),
+    "utf8",
+  );
+  assert.match(brokerSource, /subscribePort\(listener\)/);
+  const received = [];
+  const listeners = [];
+  let owner = null;
+  const bridge = {
+    claim(consumer) {
+      if (owner != null) return null;
+      owner = consumer;
+      return { request() {}, release() { owner = null; } };
+    },
+    subscribePort(listener) {
+      listeners.push(listener);
+      return () => {};
+    },
+  };
+  const sandbox = {
+    globalThis: {
+      coordinatorPort: bridge,
+      document: {
+        addEventListener() {},
+        querySelectorAll() { return []; },
+        documentElement: {},
+        readyState: "complete",
+      },
+      MutationObserver: class {
+        observe() {}
+        disconnect() {}
+      },
+    },
+  };
+  sandbox.globalThis.globalThis = sandbox.globalThis;
+  new Function("globalThis", source)(sandbox.globalThis);
+  const official = { onPort(port) { received.push(`official:${port.id}`); } };
+  assert.notEqual(bridge.claim(official), null);
+  const port = { id: "p1", addEventListener() {}, postMessage() {} };
+  owner.onPort(port);
+  for (const listener of listeners) listener(port);
+  assert.equal(received.includes("official:p1"), true);
+  assert.equal(listeners.length, 1);
+  assert.equal(sandbox.globalThis.__sandRewindLogic.capturedPort(), port);
+});
+
 test("packed linux asar UbX includes 从这里重来 on the official chat bundle", async (t) => {
   if (skipUnlessExists(t, packedLinuxAsar, "packed linux asar missing; run pack:all")) return;
   const { extractFile } = await import("@electron/asar");
@@ -109,5 +208,9 @@ test("packed linux asar UbX includes 从这里重来 on the official chat bundle
   assert.match(packed, /rewindTranscript/);
   const overlay = packed.slice(packed.indexOf("void function __sandRewindFromHere"));
   assert.match(overlay, /data-row-key/);
+  assert.match(overlay, /shouldInjectIntoMenu/);
+  assert.match(overlay, /observer\.disconnect/);
+  assert.match(overlay, /subscribePort/);
+  assert.doesNotMatch(overlay, /bridge\.claim\s*=/);
   assert.doesNotMatch(overlay, /sand-message-action-anchor--menu-open/);
 });

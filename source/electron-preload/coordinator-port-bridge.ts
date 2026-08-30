@@ -22,10 +22,15 @@ export interface CoordinatorPortClaim {
 }
 
 export function createCoordinatorPortBroker<TPort>(options: { readonly invokeRequest: () => void }): {
-  readonly bridge: { claim(consumer: CoordinatorPortConsumer<TPort>): CoordinatorPortClaim | null };
+  readonly bridge: {
+    claim(consumer: CoordinatorPortConsumer<TPort>): CoordinatorPortClaim | null;
+    subscribePort(listener: (port: TPort) => void): () => void;
+  };
   readonly deliver: (port: TPort) => void;
 } {
   let owner: CoordinatorPortConsumer<TPort> | null = null;
+  let lastPort: TPort | null = null;
+  const listeners = new Set<(port: TPort) => void>();
   return {
     bridge: {
       claim(consumer) {
@@ -42,9 +47,20 @@ export function createCoordinatorPortBroker<TPort>(options: { readonly invokeReq
           },
         };
       },
+      subscribePort(listener) {
+        listeners.add(listener);
+        if (lastPort != null) {
+          try { listener(lastPort); } catch { /* sidecar must not break the official claimant */ }
+        }
+        return () => { listeners.delete(listener); };
+      },
     },
     deliver(port) {
+      lastPort = port;
       owner?.onPort(port);
+      for (const listener of listeners) {
+        try { listener(port); } catch { /* sidecar must not break the official claimant */ }
+      }
     },
   };
 }
