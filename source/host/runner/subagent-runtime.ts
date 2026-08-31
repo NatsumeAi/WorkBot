@@ -327,9 +327,7 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
         subagentType: meta.subagentType,
         subagentRequestId: computeSubagentRequestId(meta.toolCallId),
         ...(usage?.modelId == null ? {} : { modelId: usage.modelId }),
-        outcome: aborted || outcome.status === "aborted"
-          ? "aborted"
-          : outcome.status,
+        outcome: aborted ? "aborted" : outcome.status,
         durationMs: Math.max(0, now() - meta.startedAtMs),
         toolCallCount: runner?.getObservedToolCallCount() ?? 0,
         turnEndedCount: usage?.turnEndedCount ?? 0,
